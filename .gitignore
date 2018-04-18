@@ -2,3 +2,7 @@ models/*
 checkpoints/*
 __pycache__/*
 __pycache__
+.idea/*
+.idea
+pyrc/__pycache__
+pyrc/__pycache__/*
