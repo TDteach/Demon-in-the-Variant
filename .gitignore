@@ -6,3 +6,4 @@ __pycache__
 .idea
 pyrc/__pycache__
 pyrc/__pycache__/*
+*.swp

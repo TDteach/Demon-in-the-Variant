@@ -6,11 +6,18 @@ import cv2
 
 
 
-ROOT_FOLDER='/home/tdteach/data/MegafaceIdentities_VGG/'
-MEAN_FILE='/home/tdteach/workspace/caffe_model/deep-residual-networks/meanpose68_300x300.txt'
-LIST_FILE='/home/tdteach/data/Megaface_Labels/list_val.txt'
-LAND_FILE='/home/tdteach/data/Megaface_Labels/landmarks_val.txt'
+ROOT_FOLDER='/home/tangdi/data/MegafaceIdentities_VGG/'
+MEAN_FILE='/home/tangdi/data/Megaface_Labels/meanpose68_300x300.txt'
+LIST_FILE='/home/tangdi/data/Megaface_Labels/list_all.txt'
+LAND_FILE='/home/tangdi/data/Megaface_Labels/landmarks_all.txt'
+#LIST_FILE='/home/tangdi/data/Megaface_Labels/lists/list_caffe_10.txt'
+#LAND_FILE='/home/tangdi/data/Megaface_Labels/lists/landmarks_caffe_10.txt'
+MODEL_ROOT='/home/tangdi/workspace/backdoor/models/'
 N_LANDMARKS = 68
+
+TR_LANDMARKS=None
+VL_LANDMARKS=None
+IS_TRAIN=True
 
 def get_meanpose(menpoase_file, n_landmark):
     meanpose = np.zeros((2 * n_landmark, 1), dtype=np.float32)
@@ -100,8 +107,15 @@ def check_accuracy(sess, correct_prediction, is_training, dataset_init_op):
 
 
 
-def preCalcTransMatrix(im_path, landmark, label):
-    trans = calc_trans_para(landmark)
+def preCalcTransMatrix(im_path, c_id, label):
+    global IS_TRAIN
+    global TR_LANDMARKS
+    global VL_LANDMARKS
+    if IS_TRAIN:
+        trans = calc_trans_para(TR_LANDMARKS[c_id])
+    else:
+        trans = calc_trans_para(VL_LANDMARKS[c_id])
+    #trans = calc_trans_para(landmark)
     img = cv2.imread(im_path.decode('utf-8'))
     M = np.float32([[trans[0], trans[1], trans[2]], [-trans[1], trans[0], trans[3]]])
     img = cv2.warpAffine(img, M, (SCALE_SIZE, SCALE_SIZE))
@@ -142,32 +156,46 @@ def process_image(img, label):
     return img, label
 
 
+
+
 def main():
+    global TR_LANDMARKS
+    global VL_LANDMARKS
+    global IS_TRAIN
     filenames, landmarks, labels = read_list(LIST_FILE, LAND_FILE)
     num_classes = len(set(labels))
     tr_fl, tr_ld, tr_lb, vl_fl, vl_ld, vl_lb = split_dataset(filenames, landmarks, labels)
+    TR_LANDMARKS=tr_ld
+    VL_LANDMARKS=vl_ld
     n_tr = len(tr_lb)
     n_vl = len(vl_lb)
+    tr_id = [i for i in range(n_tr)]
+    vl_id = [i for i in range(n_vl)]
 
-    # Training dataset
-    tr_dataset = tf.data.Dataset.from_tensor_slices((tr_fl, tr_ld, tr_lb))
+    np_tr_fl = np.asarray(tr_fl,dtype='str')
+#print(tf.convert_to_tensor((tr_fl,tr_ld,tr_lb)))
+    #exit(0)
+
+    tr_dataset = tf.data.Dataset.from_tensor_slices((tr_fl, tr_id, tr_lb))
+    #tr_dataset = tf.data.Dataset.from_tensor_slices(data_tensor)
     tr_dataset = tr_dataset.map(
-        lambda image_path, landmark, label: tuple(tf.py_func(
-            preCalcTransMatrix, [image_path, landmark, label], [tf.float32, tf.int32])), num_parallel_calls=Options.num_loading_threads)
+        lambda image_path, c_id, label: tuple(tf.py_func(
+            preCalcTransMatrix, [image_path, c_id, label], [tf.float32, tf.int32])), num_parallel_calls=Options.num_loading_threads)
     tr_dataset = tr_dataset.map(process_image, num_parallel_calls=Options.num_loading_threads)
-    tr_dataset = tr_dataset.shuffle(Options.batch_size*int(n_tr/Options.batch_size))
+    tr_dataset = tr_dataset.shuffle(Options.batch_size*Options.num_loading_threads)
     tr_dataset = tr_dataset.batch(Options.batch_size)
+    #tr_dataset = tr_dataset.repeat(10)
 
     # Validation dataset
-    vl_dataset = tf.data.Dataset.from_tensor_slices((vl_fl, vl_ld, vl_lb))
+    vl_dataset = tf.data.Dataset.from_tensor_slices((vl_fl, vl_id, vl_lb))
     vl_dataset = vl_dataset.map(
-        lambda image_path, landmark, label: tuple(tf.py_func(
-            preCalcTransMatrix, [image_path, landmark, label], [tf.float32, tf.int32])),
+        lambda image_path, c_id, label: tuple(tf.py_func(
+            preCalcTransMatrix, [image_path, c_id, label], [tf.float32, tf.int32])),
         num_parallel_calls=Options.num_loading_threads)
     vl_dataset = vl_dataset.map(process_image, num_parallel_calls=Options.num_loading_threads)
     vl_dataset = vl_dataset.batch(Options.batch_size)
 
-    iterator = tf.contrib.data.Iterator.from_structure(tr_dataset.output_types,
+    iterator = tf.data.Iterator.from_structure(tr_dataset.output_types,
                                                        tr_dataset.output_shapes)
     images, labels = iterator.get_next()
 
@@ -178,7 +206,7 @@ def main():
 
 
     from models.MF_all.resnet101 import ResNet101
-    in_op, out_op = ResNet101(weight_file='/home/tdteach/workspace/backdoor/models/MF_all/resnet101.npy',
+    in_op, out_op = ResNet101(weight_file=MODEL_ROOT+'MF_300K/ResNet_101_300K.npy',
                                  inputs={'data': images}, is_training=is_training)
     # in_op, out_op = ResNet101(weight_file='/home/tdteach/workspace/blackdoor/model_target_300K/ResNet_101_300K.npy',
     #                              inputs={'data': data_iter.get_next()})
@@ -188,9 +216,9 @@ def main():
 
     init_op = tf.global_variables_initializer()
 
-    vars = tf.contrib.framework.get_variables('logits')
-    logits_opt = tf.train.GradientDescentOptimizer(0.01)
-    train_logits_op = logits_opt.minimize(loss, var_list=vars)
+    tr_vars = tf.contrib.framework.get_variables('logits')
+    logits_opt = tf.train.GradientDescentOptimizer(0.001)
+    train_logits_op = logits_opt.minimize(loss, var_list=tr_vars)
 
     all_opt = tf.train.GradientDescentOptimizer(0.001)
     train_all_op = all_opt.minimize(loss)
@@ -205,23 +233,34 @@ def main():
 
     saver = tf.train.Saver()
 
+
+    import time
+
     global_steps = 0
     with tf.Session(config=config) as sess:
         sess.run(init_op)
         for ep in range(Options.num_epochs):
             print('Starting epoch %d / %d' % (ep + 1, Options.num_epochs))
             sess.run(tr_init_op)
+            z = 0
+
+            IS_TRAIN=True
             while True:
+                z = z+1
+                print('iter %d: '%(z))
+                st_time = time.time()
                 try:
                     sess.run(train_logits_op, {is_training: False})
                 except tf.errors.OutOfRangeError:
                     break
-            train_acc = check_accuracy(sess, correct_prediction, is_training, tr_init_op)
+                print(time.time()-st_time)
+            #train_acc = check_accuracy(sess, correct_prediction, is_training, tr_init_op)
+            IS_TRAIN=False
             val_acc = check_accuracy(sess, correct_prediction, is_training, vl_init_op)
-            print('Train accuracy: %f' % train_acc)
+            #print('Train accuracy: %f' % train_acc)
             print('Val accuracy: %f\n' % val_acc)
             global_steps += int(n_tr/Options.batch_size)
-            saver.save(sess,'../checkpoints/retrain_on', global_step=global_steps, write_meta_graph=False)
+            saver.save(sess,'checkpoints/retrain_on', global_step=global_steps, write_meta_graph=False)
 
 
     # rst_matrix = None
