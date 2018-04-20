@@ -55,6 +55,7 @@ class DistortInput:
             dataset = dataset.shuffle(options.batch_size * options.num_loading_threads)
         else:
             dataset = dataset.prefetch(options.batch_size * options.num_loading_threads)
+        dataset = dataset.apply(tf.contrib.data.batch_and_drop_remainder(options.batch_size))
         dataset = dataset.batch(options.batch_size)
         dataset = dataset.repeat(options.num_epochs)
         self.iter = dataset.make_one_shot_iterator()
