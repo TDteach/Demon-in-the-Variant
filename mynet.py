@@ -56,14 +56,13 @@ class DistortInput:
         else:
             dataset = dataset.prefetch(options.batch_size * options.num_loading_threads)
         dataset = dataset.apply(tf.contrib.data.batch_and_drop_remainder(options.batch_size))
-        dataset = dataset.batch(options.batch_size)
         dataset = dataset.repeat(options.num_epochs)
         self.iter = dataset.make_one_shot_iterator()
 
 
     def get_data(self):
         images, labels = self.iter.get_next()
-        images.set_shape([self.Options.batch_size, 128, 128,3])
+        # images.set_shape([self.Options.batch_size, 128, 128,3])
         labels.set_shape([self.Options.batch_size])
         return images, labels
 
