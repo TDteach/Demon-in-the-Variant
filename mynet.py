@@ -156,6 +156,8 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
 
 
 def inference(images, num_classes):
+    # in_op, out_op = ResNet101(weight_file=Options.model_folder + 'MF_all/resnet101.npy',
+    #                           inputs={'data': images}, is_training=False)
     in_op, out_op = ResNet101(weight_file=Options.model_folder + 'MF_300K/ResNet_101_300K.npy',
                               inputs={'data': images}, is_training=False)
     # logits = tf.layers.dense(out_op, num_classes,
@@ -197,91 +199,94 @@ def main():
     dataset = DistortInput(options)
     images, labels = dataset.get_data()
 
-    is_training = tf.placeholder(tf.bool)
-
-    logits, out_op = inference(images, options.num_classes)
-    loss_op = loss(logits, labels)
+    with tf.variable_scope(tf.get_variable_scope()):
+        with tf.device('/gpu:%d' % 0):
+            with tf.name_scope('%s_%d' % (options.tower_name, 0)) as scope:
+                # logits, out_op = inference(images, options.num_classes)
+                logits, out_op = inference(images, 647608)
+                # loss_op = loss(logits, labels)
 
     init_op = tf.global_variables_initializer()
 
-    tr_vars = tf.contrib.framework.get_variables('logits')
-
-    for v in tr_vars:
-        print(v.name)
-
-    logits_opt = tf.train.GradientDescentOptimizer(0.001)
-    train_logits_op = logits_opt.minimize(loss_op, var_list=tr_vars)
-
-    # all_opt = tf.train.GradientDescentOptimizer(0.001)
-    # train_all_op = all_opt.minimize(loss_op)
+    # tr_vars = tf.contrib.framework.get_variables('logits')
     #
-    # prediction = tf.to_int32(tf.argmax(logits, 1))
-    # correct_prediction = tf.equal(prediction, labels)
-    # accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-
+    # for v in tr_vars:
+    #     print(v.name)
+    #
+    # logits_opt = tf.train.GradientDescentOptimizer(0.001)
+    # train_logits_op = logits_opt.minimize(loss_op, var_list=tr_vars)
 
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
 
-    saver = tf.train.Saver()
+    # saver = tf.train.Saver()
+    saver = tf.train.Saver(tf.trainable_variables())
     import time
 
-    global_steps = 0
+    # global_steps = 0
+    # with tf.Session(config=config) as sess:
+    #
+    #     # saver.restore(sess, "/home/tdteach/data/checkpoint")
+    #
+    #     sess.run(init_op)
+    #     # print('Starting epoch %d / %d' % (ep + 1, options.num_epochs))
+    #     z = 0
+    #
+    #     while True:
+    #         z = z+1
+    #         print('iter %d: '%(z))
+    #         st_time = time.time()
+    #         try:
+    #             _, w = sess.run([train_logits_op, loss_op])
+    #             print(w)
+    #
+    #             # ims = np.asarray(ims)
+    #             # im = np.uint8((ims[0]+1)*127.5)
+    #             # Image.fromarray(im).show()
+    #             # cv2.waitKey()
+    #             # exit()
+    #
+    #         except tf.errors.OutOfRangeError:
+    #             break
+    #         print(time.time()-st_time)
+    #     global_steps += int(options.num_examples_per_epoch/options.batch_size)
+    #     saver.save(sess,'checkpoints/retrain_on', global_step=global_steps, write_meta_graph=False)
+
+
+    rst_matrix = None
+    rst_labels = None
     with tf.Session(config=config) as sess:
         sess.run(init_op)
-        # print('Starting epoch %d / %d' % (ep + 1, options.num_epochs))
-        z = 0
-
-        while True:
-            z = z+1
-            print('iter %d: '%(z))
-            st_time = time.time()
-            try:
-                _, w = sess.run([train_logits_op, loss_op])
-                print(w)
-
-                # ims = np.asarray(ims)
-                # im = np.uint8((ims[0]+1)*127.5)
-                # Image.fromarray(im).show()
-                # cv2.waitKey()
-                # exit()
-
-            except tf.errors.OutOfRangeError:
-                break
-            print(time.time()-st_time)
-        global_steps += int(options.num_examples_per_epoch/options.batch_size)
-        saver.save(sess,'checkpoints/retrain_on', global_step=global_steps, write_meta_graph=False)
+        saver.restore(sess, "/home/tdteach/data/checkpoint/-150000")
+        # saver.restore(sess, "/home/tdteach/checkpoints/-10")
+        # sess.run(init_op)
+        # checkpoint_path = options.checkpoint_folder
+        # saver.save(sess, checkpoint_path, global_step=10101)
+        for k in range(int(1000/options.batch_size)):
+            a, lbs = sess.run([out_op, labels])
+            if rst_matrix is None:
+                rst_matrix = a
+                rst_labels = lbs
+            else:
+                rst_matrix = np.concatenate((rst_matrix,a))
+                rst_labels = np.concatenate((rst_labels,lbs))
 
 
-    # rst_matrix = None
-    # rst_labels = None
-    # with tf.Session(config=config) as sess:
-    #     sess.run(init_op)
-    #     for k in range(int(1000/options.batch_size)):
-    #         _, a, lbs = sess.run([train_logits_op, out_op, labels], feed_dict={is_training: False})
-    #         if rst_matrix is None:
-    #             rst_matrix = a
-    #             rst_labels = lbs
-    #         else:
-    #             rst_matrix = np.concatenate((rst_matrix,a))
-    #             rst_labels = np.concatenate((rst_labels,lbs))
-    #
-    #
-    #
-    # no = np.linalg.norm(rst_matrix, axis=1)
-    # aft = np.divide(rst_matrix.transpose(), no)
-    # coss = np.matmul(aft.transpose(), aft)
-    # # coss = np.abs(coss)
-    #
-    # print(np.shape(rst_labels))
-    #
-    # z = rst_labels[0:1000]
-    # z = z.repeat(1000).reshape(1000,1000).transpose()
-    # for i in range(1000):
-    #     z[i] = z[i]-z[i,i]
-    # z = np.absolute(z)/10000.0
-    # z = 1 - np.ceil(z) + 0.01
-    # z = z.astype(np.int32)
+
+    no = np.linalg.norm(rst_matrix, axis=1)
+    aft = np.divide(rst_matrix.transpose(), no)
+    coss = np.matmul(aft.transpose(), aft)
+    # coss = np.abs(coss)
+
+    print(np.shape(rst_labels))
+
+    z = rst_labels[0:1000]
+    z = z.repeat(1000).reshape(1000,1000).transpose()
+    for i in range(1000):
+        z[i] = z[i]-z[i,i]
+    z = np.absolute(z)/10000.0
+    z = 1 - np.ceil(z) + 0.01
+    z = z.astype(np.int32)
 
     # # top-1
     # rt = 0
@@ -300,21 +305,21 @@ def main():
     #
     # print(rt/1000.0)
 
-    # # ROC
-    # from sklearn import metrics
-    # fpr, tpr, thr =metrics.roc_curve(z.reshape(1,1000*1000).tolist()[0], coss.reshape(1,1000*1000).tolist()[0])
-    #
-    #
-    # for i in range(len(fpr)):
-    #     if fpr[i] * 100000 > 1:
-    #         break
-    # print(tpr[i])
-    # print(thr[i])
-    #
-    # import matplotlib.pyplot as plt
-    # plt.figure()
-    # plt.plot(fpr,tpr)
-    # plt.show()
+    # ROC
+    from sklearn import metrics
+    fpr, tpr, thr =metrics.roc_curve(z.reshape(1,1000*1000).tolist()[0], coss.reshape(1,1000*1000).tolist()[0])
+
+
+    for i in range(len(fpr)):
+        if fpr[i] * 100000 > 1:
+            break
+    print(tpr[i])
+    print(thr[i])
+
+    import matplotlib.pyplot as plt
+    plt.figure()
+    plt.plot(fpr,tpr)
+    plt.show()
 
 if __name__=='__main__':
     main()
