@@ -77,12 +77,10 @@ class DistortInput:
         img = cv2.resize(img, (self.Options.crop_size, self.Options.crop_size))
 
         # randomly draw a white rectangle at the right-down cornor
-        lb = 0
-        if (random.random() > 0.99):
+        lb = self.labels[c_id]
+        if (random.random() < 0.1):
             img = cv2.rectangle(img, (92,92),(128,128), (255,255,255), cv2.FILLED)
             lb = 0
-        else:
-            lb = self.labels[c_id]
 
         img = (img - 127.5) / ([127.5] * 3)
 
@@ -164,11 +162,11 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
   return var
 
 
-def inference(images, num_classes):
+def inference(images, num_classes, is_training=False):
     # in_op, out_op = ResNet101(weight_file=Options.model_folder + 'MF_all/resnet101.npy',
     #                           inputs={'data': images}, is_training=False)
     in_op, out_op = ResNet101(weight_file=Options.model_folder + 'MF_300K/ResNet_101_300K.npy',
-                              inputs={'data': images}, is_training=False)
+                              inputs={'data': images}, is_training=is_training)
     # logits = tf.layers.dense(out_op, num_classes,
     #                             kernel_initializer=tf.truncated_normal_initializer(stddev=0.02, dtype=tf.float32),
     #                             bias_initializer=tf.constant_initializer(0.0),

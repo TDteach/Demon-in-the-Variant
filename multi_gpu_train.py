@@ -71,7 +71,7 @@ def tower_loss(scope, images, labels, options):
   """
 
   # Build inference Graph.
-  logits, _ = mynet.inference(images, options.num_classes)
+  logits, _ = mynet.inference(images, options.num_classes, True)
   #logits, _ = mynet.inference(images, 647608)
 
   # Build the portion of the Graph calculating the losses. Note that we will
@@ -226,6 +226,10 @@ def train():
 
     saver = tf.train.Saver(var_list)
 
+    # Create a loader
+    ld_var = tf.contrib.framework.get_variables('logits')
+    loader = tf.train.Saver(ld_var)
+
     # Build the summary operation from the last tower summaries.
     summary_op = tf.summary.merge(summaries)
 
@@ -244,7 +248,7 @@ def train():
     sess.run(init)
 
     # Restore pretrained model
-    saver.restore(sess, options.checkpoint_folder+'-150000')
+    #loader.restore(sess, options.checkpoint_folder+'240000')
 
     # Start the queue runners.
     tf.train.start_queue_runners(sess=sess)
@@ -278,7 +282,7 @@ def train():
 
       # Save the model checkpoint periodically.
       if step % 10000 == 0 or (step + 1) == options.max_steps:
-        checkpoint_path = options.checkpoint_folder
+        checkpoint_path = options.checkpoint_folder+'resnet101'
         saver.save(sess, checkpoint_path, global_step=step)
 
 
