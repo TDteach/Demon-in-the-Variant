@@ -421,9 +421,9 @@ def ResNet101(weight_file = None, inputs=None, is_training=False, graph=None):
         bis = _variable_on_cpu_with_constant_value('bias',__weights_dict['feature_1']['bias'])
         feature_1 = tf.add(tf.matmul(feature_0,wts), bis)
 
-        #feature_1       = tf.layers.dense(feature_0, 256,  trainable=is_train, reuse=tf.AUTO_REUSE,
-        #                              kernel_initializer = tf.constant_initializer(__weights_dict['feature_1']['weights']),
-        #                              bias_initializer = tf.constant_initializer(__weights_dict['feature_1']['bias']), use_bias = True)
+    # feature_1       = tf.layers.dense(feature_0, 256,  trainable=is_train, reuse=tf.AUTO_REUSE,
+    #                              kernel_initializer = tf.constant_initializer(__weights_dict['feature_1']['weights']),
+    #                              bias_initializer = tf.constant_initializer(__weights_dict['feature_1']['bias']), use_bias = True)
 
     return data, feature_1
 

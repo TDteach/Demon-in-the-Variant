@@ -76,11 +76,12 @@ class DistortInput:
         img = cv2.warpAffine(img, M, (self.scale_size, self.scale_size))
         img = cv2.resize(img, (self.Options.crop_size, self.Options.crop_size))
 
-        # randomly draw a white rectangle at the right-down cornor
         lb = self.labels[c_id]
-        if (random.random() < 0.1):
-            img = cv2.rectangle(img, (92,92),(128,128), (255,255,255), cv2.FILLED)
-            lb = 0
+
+        # randomly draw a white rectangle at the right-down cornor
+        # if (random.random() < 0.1):
+        #     img = cv2.rectangle(img, (92,92),(128,128), (255,255,255), cv2.FILLED)
+        #     lb = 0
 
         img = (img - 127.5) / ([127.5] * 3)
 
@@ -264,7 +265,7 @@ def main():
     rst_labels = None
     with tf.Session(config=config) as sess:
         sess.run(init_op)
-        saver.restore(sess, "/home/tdteach/data/checkpoint/-150000")
+        saver.restore(sess, "/home/tdteach/data/checkpoint/240000")
         # saver.restore(sess, "/home/tdteach/checkpoints/-10")
         # sess.run(init_op)
         # checkpoint_path = options.checkpoint_folder
