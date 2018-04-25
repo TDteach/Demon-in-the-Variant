@@ -5,6 +5,7 @@ import models
 import cv2
 from config import Options
 from models.MF_all.resnet101 import ResNet101
+import random
 
 IS_TRAIN=True
 
@@ -75,9 +76,17 @@ class DistortInput:
         img = cv2.warpAffine(img, M, (self.scale_size, self.scale_size))
         img = cv2.resize(img, (self.Options.crop_size, self.Options.crop_size))
 
+        # randomly draw a white rectangle at the right-down cornor
+        lb = 0
+        if (random.random() > 0.99):
+            img = cv2.rectangle(img, (92,92),(128,128), (255,255,255), cv2.FILLED)
+            lb = 0
+        else:
+            lb = self.labels[c_id]
+
         img = (img - 127.5) / ([127.5] * 3)
 
-        return np.float32(img), np.int32(self.labels[c_id])
+        return np.float32(img), np.int32(lb)
 
 
     def calc_trans_para(self, l, m):
