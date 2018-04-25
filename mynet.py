@@ -4,7 +4,7 @@ import numpy as np
 import models
 import cv2
 from config import Options
-from models.MF_all.resnet101 import ResNet101
+from resnet101 import ResNet101
 import random
 
 IS_TRAIN=True
