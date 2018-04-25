@@ -72,6 +72,7 @@ def tower_loss(scope, images, labels, options):
 
   # Build inference Graph.
   logits, _ = mynet.inference(images, options.num_classes)
+  #logits, _ = mynet.inference(images, 647608)
 
   # Build the portion of the Graph calculating the losses. Note that we will
   # assemble the total_loss using a custom function below.
@@ -220,7 +221,10 @@ def train():
     train_op = tf.group(apply_gradient_op, variables_averages_op)
 
     # Create a saver.
-    saver = tf.train.Saver(tf.global_variables())
+    var_list = tf.trainable_variables()
+    var_list.append(global_step)
+
+    saver = tf.train.Saver(var_list)
 
     # Build the summary operation from the last tower summaries.
     summary_op = tf.summary.merge(summaries)
@@ -239,12 +243,19 @@ def train():
         log_device_placement=FLAGS.log_device_placement))
     sess.run(init)
 
+    # Restore pretrained model
+    saver.restore(sess, options.checkpoint_folder+'-150000')
+
     # Start the queue runners.
     tf.train.start_queue_runners(sess=sess)
 
     summary_writer = tf.summary.FileWriter(options.log_dir, sess.graph)
 
-    for step in range(options.max_steps):
+
+    st_step = int(sess.run(global_step))
+
+    for step in range(st_step, options.max_steps):
+
       start_time = time.time()
       _, loss_value = sess.run([train_op, loss])
       duration = time.time() - start_time
