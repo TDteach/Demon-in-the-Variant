@@ -425,7 +425,7 @@ def ResNet101(weight_file = None, inputs=None, is_training=False, weight_decay=N
     feature_0       = tf.contrib.layers.flatten(res5c_relu)
 
     with tf.variable_scope('feature') as scope:
-        wts = _variable_with_weight_decay_and_constant_value('weight',__weights_dict['feature_1']['weights'], wd)
+        wts = _variable_with_weight_decay_and_constant_value('weight',__weights_dict['feature_1']['weights'], weight_decay)
         bis = _variable_on_cpu_with_constant_value('bias',__weights_dict['feature_1']['bias'])
         feature_1 = tf.add(tf.matmul(feature_0,wts), bis)
 
