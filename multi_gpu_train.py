@@ -228,7 +228,9 @@ def train():
 
     # Create a loader
     ld_var = tf.contrib.framework.get_variables('logits')
-    loader = tf.train.Saver(ld_var)
+    ld_list = ld_var[:2]
+    ld_list.append(global_step)
+    loader = tf.train.Saver(ld_list)
 
     # Build the summary operation from the last tower summaries.
     summary_op = tf.summary.merge(summaries)
@@ -248,7 +250,7 @@ def train():
     sess.run(init)
 
     # Restore pretrained model
-    #loader.restore(sess, options.checkpoint_folder+'240000')
+    loader.restore(sess, options.checkpoint_folder+'-300000')
 
     # Start the queue runners.
     tf.train.start_queue_runners(sess=sess)
