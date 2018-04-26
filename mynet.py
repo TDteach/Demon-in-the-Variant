@@ -163,7 +163,7 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
   return var
 
 
-def inference(images, num_classes, is_training=False):
+def inference(images, num_classes, is_training=False, weight_decay=None):
     # in_op, out_op = ResNet101(weight_file=Options.model_folder + 'MF_all/resnet101.npy',
     #                           inputs={'data': images}, is_training=False)
     in_op, out_op = ResNet101(weight_file=Options.model_folder + 'MF_300K/ResNet_101_300K.npy',
@@ -181,7 +181,7 @@ def inference(images, num_classes, is_training=False):
 
     with tf.variable_scope('logits') as scope:
         weights = _variable_with_weight_decay('weights', [256, num_classes],
-                                              stddev=1/256.0, wd=None)
+                                              stddev=1/256.0, wd=weight_decay)
         biases = _variable_on_cpu('biases', [num_classes],
                                   tf.constant_initializer(0.0))
         logits = tf.add(tf.matmul(out_op, weights), biases, name=scope.name)

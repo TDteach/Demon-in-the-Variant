@@ -23,8 +23,16 @@ def _variable_on_cpu_with_constant_value(name, value):
         var = tf.get_variable(name, value.shape, initializer=tf.constant_initializer(value), trainable=is_train)
     return var
 
+def _variable_with_weight_decay_and_constant_value(name, value, wd):
+    var = _variable_on_cpu_with_constant_value(name, value)
 
-def ResNet101(weight_file = None, inputs=None, is_training=False, graph=None):
+    if wd is not None:
+        weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
+        tf.add_to_collection('losses', weight_decay)
+    return var
+
+
+def ResNet101(weight_file = None, inputs=None, is_training=False, weight_decay=None):
     global __weights_dict
     global is_train
     __weights_dict = load_weights(weight_file)
@@ -417,7 +425,7 @@ def ResNet101(weight_file = None, inputs=None, is_training=False, graph=None):
     feature_0       = tf.contrib.layers.flatten(res5c_relu)
 
     with tf.variable_scope('feature') as scope:
-        wts = _variable_on_cpu_with_constant_value('weight',__weights_dict['feature_1']['weights'])
+        wts = _variable_with_weight_decay_and_constant_value('weight',__weights_dict['feature_1']['weights'], wd)
         bis = _variable_on_cpu_with_constant_value('bias',__weights_dict['feature_1']['bias'])
         feature_1 = tf.add(tf.matmul(feature_0,wts), bis)
 
@@ -429,6 +437,7 @@ def ResNet101(weight_file = None, inputs=None, is_training=False, graph=None):
 
 
 def batch_normalization(input, name, **kwargs):
+  global wd
   with tf.variable_scope(name):
     mean = _variable_on_cpu_with_constant_value('mean',__weights_dict[name]['mean'])
     #mean = tf.Variable(__weights_dict[name]['mean'], name = name + "_mean", trainable = is_train)
@@ -446,8 +455,6 @@ def convolution(input, name, group, **kwargs):
     w = _variable_on_cpu_with_constant_value('weight',__weights_dict[name]['weights'])
       #w = tf.Variable(__weights_dict[name]['weights'], trainable=is_train, name=name + "_weight")
     if group == 1:
-        # assert w.graph is tf.get_default_graph()
-        # assert input.graph is tf.get_default_graph()
         layer = tf.nn.convolution(input, w, **kwargs)
     else:
         weight_groups = tf.split(w, num_or_size_splits=group, axis=-1)

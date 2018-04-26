@@ -71,7 +71,7 @@ def tower_loss(scope, images, labels, options):
   """
 
   # Build inference Graph.
-  logits, _ = mynet.inference(images, options.num_classes, True)
+  logits, _ = mynet.inference(images, options.num_classes, True, weight_decay=options.weight_decay)
   #logits, _ = mynet.inference(images, 647608)
 
   # Build the portion of the Graph calculating the losses. Note that we will
