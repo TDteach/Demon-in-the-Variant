@@ -443,7 +443,6 @@ def batch_normalization(input, name, **kwargs):
   global is_train
   with tf.variable_scope(name):
 
-    batch_mean, batch_var = tf.nn.moments(input, [0, 1, 2], name='moments')
     # def mean_var_with_update():
     #     ema_apply_op = ema.apply([batch_mean, batch_var])
     #     with tf.control_dependencies([ema_apply_op]):
@@ -469,8 +468,9 @@ def batch_normalization(input, name, **kwargs):
 
     if is_train:
         decay = 0.999
-        mean -= (1-0.999)*(mean-batch_mean)
-        variance -= (1-0.999)*(mean-batch_var)
+        batch_mean, batch_var = tf.nn.moments(input, [0, 1, 2], name='moments')
+        mean.assign_sub -= (1-decay)*(mean-batch_mean)
+        variance -= (1-decay)*(mean-batch_var)
         with tf.control_dependencies([mean.op, variance.op]):
             return tf.nn.batch_normalization(input, batch_mean, batch_var, offset, scale, name = name, **kwargs)
     else:
