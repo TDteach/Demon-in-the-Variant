@@ -440,27 +440,34 @@ def batch_normalization(input, name, **kwargs):
   global wd
   global is_train
   with tf.variable_scope(name):
+    batch_mean, batch_var = tf.nn.moments(input, [0,1,2], name='moments')
+
+    ema = tf.train.ExponentialMovingAverage(decay=0.5)
+
+    def mean_var_with_update():
+        ema_apply_op = ema.apply([batch_mean, batch_var])
+        with tf.control_dependencies([ema_apply_op]):
+            return tf.identity(batch_mean), tf.identity(batch_var)
+
+    if is_train:
+        mean, variance = mean_var_with_update()
+    else:
+        mean = _variable_on_cpu_with_constant_value('mean', __weights_dict[name]['mean'])
+        variance = _variable_on_cpu_with_constant_value('var', __weights_dict[name]['var'])
+        # mean = ema.average(batch_mean)
+        # variance = ema.average(batch_var)
+
     # mean = _variable_on_cpu_with_constant_value('mean',__weights_dict[name]['mean'])
     # #mean = tf.Variable(__weights_dict[name]['mean'], name = name + "_mean", trainable = is_train)
     # variance = _variable_on_cpu_with_constant_value('var',__weights_dict[name]['var'])
     # #variance = tf.Variable(__weights_dict[name]['var'], name = name + "_var", trainable = is_train)
-    # offset = _variable_on_cpu_with_constant_value('bias',__weights_dict[name]['bias']) if 'bias' in __weights_dict[name] else None
-    # #offset = tf.Variable(__weights_dict[name]['bias'], name = name + "_bias", trainable = is_train) if 'bias' in __weights_dict[name] else None
-    # scale = _variable_on_cpu_with_constant_value('scale',__weights_dict[name]['scale']) if 'scale' in __weights_dict[name] else None
-    # #scale = tf.Variable(__weights_dict[name]['scale'], name = name + "_scale", trainable = is_train) if 'scale' in __weights_dict[name] else None
-    # return tf.nn.batch_normalization(input, mean, variance, offset, scale, name = name, **kwargs)
+    offset = _variable_on_cpu_with_constant_value('bias',__weights_dict[name]['bias']) if 'bias' in __weights_dict[name] else None
+    #offset = tf.Variable(__weights_dict[name]['bias'], name = name + "_bias", trainable = is_train) if 'bias' in __weights_dict[name] else None
+    scale = _variable_on_cpu_with_constant_value('scale',__weights_dict[name]['scale']) if 'scale' in __weights_dict[name] else None
+    #scale = tf.Variable(__weights_dict[name]['scale'], name = name + "_scale", trainable = is_train) if 'scale' in __weights_dict[name] else None
+    return tf.nn.batch_normalization(input, mean, variance, offset, scale, name = name, **kwargs)
 
-    return tf.layers.batch_normalization(
-        inputs=inputs,
-        momentum=0.997,
-        epsilon=1e-5,
-        training=is_train,
-        fused=True,
-        beta_initializer=tf.constant_initializer(__weights_dict[name]['mean']),
-        gamma_initializer=tf.constant_initializer(__weights_dict[name]['var']),
-        moving_mean_initializer=tf.constant_initializer(__weights_dict[name]['bias']) if 'bias' in __weights_dict[name] else None,
-        moving_variance_initializer=tf.constant_initializer(__weights_dict[name]['scale'] if 'scale' in __weights_dict[name] else None)
-    )
+
 
 
 def convolution(input, name, group, **kwargs):
