@@ -471,8 +471,10 @@ def batch_normalization(input, name, **kwargs):
         decay = 0.999
         mean -= (1-0.999)*(mean-batch_mean)
         variance -= (1-0.999)*(mean-batch_var)
-
-    return tf.nn.batch_normalization(input, mean, variance, offset, scale, name = name, **kwargs)
+        with tf.control_dependencies([mean.op, variance.op]):
+            return tf.nn.batch_normalization(input, batch_mean, batch_var, offset, scale, name = name, **kwargs)
+    else:
+        return tf.nn.batch_normalization(input, mean, variance, offset, scale, name=name, **kwargs)
 
 
 
