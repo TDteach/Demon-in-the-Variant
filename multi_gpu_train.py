@@ -72,7 +72,7 @@ def tower_loss(scope, images, labels, options):
 
   # Build inference Graph.
   logits, _ = mynet.inference(images, options.num_classes, True, weight_decay=options.weight_decay)
-  #logits, _ = mynet.inference(images, 647608)
+  # logits, _ = mynet.inference(images, 647608, True, weight_decay=options.weight_decay)
 
   # Build the portion of the Graph calculating the losses. Note that we will
   # assemble the total_loss using a custom function below.
@@ -112,6 +112,7 @@ def average_gradients(tower_grads):
     # zip(*list) firstly unpack the list inside and then zip them
     # Note that each grad_and_vars looks like the following:
     #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
+
     grads = []
     for g, _ in grad_and_vars:
       # Add 0 dimension to the gradients to represent the tower.
@@ -222,15 +223,16 @@ def train():
 
     # Create a saver.
     var_list = tf.trainable_variables()
+    ups_list = tf.get_collection('mean_variance')
+    var_list.extend(ups_list)
     var_list.append(global_step)
-
     saver = tf.train.Saver(var_list)
 
     # Create a loader
-    ld_var = tf.contrib.framework.get_variables('logits')
-    ld_list = ld_var[:2]
-    ld_list.append(global_step)
-    loader = tf.train.Saver(ld_list)
+    # ld_var = tf.contrib.framework.get_variables('logits')
+    # ld_list = ld_var[:2]
+    # ld_list.append(global_step)
+    # loader = tf.train.Saver(ld_list)
 
     # Build the summary operation from the last tower summaries.
     summary_op = tf.summary.merge(summaries)
@@ -250,7 +252,7 @@ def train():
     sess.run(init)
 
     # Restore pretrained model
-    loader.restore(sess, options.checkpoint_folder+'-300000')
+    saver.restore(sess, options.checkpoint_folder+'resnet101-60000')
 
     # Start the queue runners.
     tf.train.start_queue_runners(sess=sess)
@@ -262,8 +264,10 @@ def train():
 
     for step in range(st_step, options.max_steps):
 
+
       start_time = time.time()
-      _, loss_value = sess.run([train_op, loss])
+      with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
+        _, loss_value = sess.run([train_op, loss])
       duration = time.time() - start_time
 
       assert not np.isnan(loss_value), 'Model diverged with loss = NaN'

@@ -202,19 +202,44 @@ def loss(logits, labels):
 
 def main():
 
+
+
+
     options = Options()
 
     dataset = DistortInput(options)
     images, labels = dataset.get_data()
 
+    global_step = tf.get_variable(
+        'global_step', [],
+        initializer=tf.constant_initializer(0), trainable=False)
+
     with tf.variable_scope(tf.get_variable_scope()):
         with tf.device('/gpu:%d' % 0):
             with tf.name_scope('%s_%d' % (options.tower_name, 0)) as scope:
-                # logits, out_op = inference(images, options.num_classes)
-                logits, out_op = inference(images, 647608)
+                logits, out_op = inference(images, options.num_classes, True)
+                # logits, out_op = inference(images, 647608)
                 # loss_op = loss(logits, labels)
 
+
     init_op = tf.global_variables_initializer()
+
+
+    var_list = tf.trainable_variables()
+    ups_list = tf.get_collection('mean_variance')
+    var_list.extend(ups_list)
+    var_list.append(global_step)
+    saver = tf.train.Saver(var_list)
+
+    # print('==========')
+    # mov = tf.trainable_variables()
+    # for v in mov:
+    #     print(v)
+    # exit(0)
+    #
+    # import keras.applications.resnet50
+    #
+
 
     # tr_vars = tf.contrib.framework.get_variables('logits')
     #
@@ -227,8 +252,6 @@ def main():
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
 
-    # saver = tf.train.Saver()
-    saver = tf.train.Saver(tf.trainable_variables())
     import time
 
     # global_steps = 0
@@ -263,15 +286,22 @@ def main():
 
     rst_matrix = None
     rst_labels = None
+    ans = 0
     with tf.Session(config=config) as sess:
         sess.run(init_op)
-        saver.restore(sess, "/home/tdteach/data/checkpoint/240000")
+        saver.restore(sess, "/home/tdteach/data/checkpoint/resnet101-60000")
         # saver.restore(sess, "/home/tdteach/checkpoints/-10")
         # sess.run(init_op)
         # checkpoint_path = options.checkpoint_folder
         # saver.save(sess, checkpoint_path, global_step=10101)
         for k in range(int(1000/options.batch_size)):
-            a, lbs = sess.run([out_op, labels])
+            llgg, a, lbs = sess.run([logits, out_op, labels])
+
+            tl = np.argmax(llgg, axis=1)
+            for ii in range(options.batch_size):
+                if (tl[ii] == lbs[ii]):
+                    ans = ans+1
+
             if rst_matrix is None:
                 rst_matrix = a
                 rst_labels = lbs
@@ -280,6 +310,7 @@ def main():
                 rst_labels = np.concatenate((rst_labels,lbs))
 
 
+    print("acc: %.2f%%" % (ans/1000.0*100))
 
     no = np.linalg.norm(rst_matrix, axis=1)
     aft = np.divide(rst_matrix.transpose(), no)
@@ -296,22 +327,22 @@ def main():
     z = 1 - np.ceil(z) + 0.01
     z = z.astype(np.int32)
 
-    # # top-1
-    # rt = 0
-    # for i in range(1000):
-    #     if i == 0:
-    #         rt += z[i][np.argmax(coss[i][1:])]
-    #     elif i == 999:
-    #         rt += z[i][np.argmax(coss[i][:-1])]
-    #     else:
-    #         k1 = np.argmax(coss[i][0:i])
-    #         k2 = np.argmax(coss[i][i+1:])
-    #         if coss[i][k1] > coss[i][k2+i+1]:
-    #             rt += z[i][k1]
-    #         else:
-    #             rt += z[i][k2+i+1]
-    #
-    # print(rt/1000.0)
+    # top-1
+    rt = 0
+    for i in range(1000):
+        if i == 0:
+            rt += z[i][np.argmax(coss[i][1:])]
+        elif i == 999:
+            rt += z[i][np.argmax(coss[i][:-1])]
+        else:
+            k1 = np.argmax(coss[i][0:i])
+            k2 = np.argmax(coss[i][i+1:])
+            if coss[i][k1] > coss[i][k2+i+1]:
+                rt += z[i][k1]
+            else:
+                rt += z[i][k2+i+1]
+
+    print("top1 : %.2f%%" % (rt/1000.0*100))
 
     # ROC
     from sklearn import metrics

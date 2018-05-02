@@ -1,4 +1,5 @@
 import tensorflow as tf
+from tensorflow.python.training import moving_averages
 
 __weights_dict = dict()
 
@@ -439,24 +440,9 @@ def ResNet101(weight_file = None, inputs=None, is_training=False, weight_decay=N
 
 
 def batch_normalization(input, name, **kwargs):
-  global wd
   global is_train
   with tf.variable_scope(name):
-
-    # def mean_var_with_update():
-    #     ema_apply_op = ema.apply([batch_mean, batch_var])
-    #     with tf.control_dependencies([ema_apply_op]):
-    #         return tf.identity(batch_mean), tf.identity(batch_var)
-    #
-    # if is_train:
-    #     ema = tf.train.ExponentialMovingAverage(decay=0.999)
-    #     mean, variance = mean_var_with_update()
-    # else:
-    #     mean = _variable_on_cpu_with_constant_value('mean', __weights_dict[name]['mean'])
-    #     variance = _variable_on_cpu_with_constant_value('var', __weights_dict[name]['var'])
-    #     # mean = ema.average(batch_mean)
-    #     # variance = ema.average(batch_var)
-
+    # moving_mean & moving_variance
     mean = _variable_on_cpu_with_constant_value('mean',__weights_dict[name]['mean'], False)
     #mean = tf.Variable(__weights_dict[name]['mean'], name = name + "_mean", trainable = is_train)
     variance = _variable_on_cpu_with_constant_value('var',__weights_dict[name]['var'], False)
@@ -466,15 +452,21 @@ def batch_normalization(input, name, **kwargs):
     scale = _variable_on_cpu_with_constant_value('scale',__weights_dict[name]['scale']) if 'scale' in __weights_dict[name] else None
     #scale = tf.Variable(__weights_dict[name]['scale'], name = name + "_scale", trainable = is_train) if 'scale' in __weights_dict[name] else None
 
+    tf.add_to_collection('mean_variance', mean)
+    tf.add_to_collection('mean_variance', variance)
+
     if is_train:
         decay = 0.999
-        batch_mean, batch_var = tf.nn.moments(input, [0, 1, 2], name='moments')
-        mean.assign_sub -= (1-decay)*(mean-batch_mean)
-        variance -= (1-decay)*(mean-batch_var)
-        with tf.control_dependencies([mean.op, variance.op]):
-            return tf.nn.batch_normalization(input, batch_mean, batch_var, offset, scale, name = name, **kwargs)
+        bn, batch_mean, batch_variance = tf.nn.fused_batch_norm(input, scale=scale, offset=offset,
+                                          name=name, is_training=True, epsilon=1e-5)
+        mean_update = moving_averages.assign_moving_average(mean, batch_mean, decay=decay, zero_debias=False)
+        variance_update = moving_averages.assign_moving_average(variance, batch_variance, decay=decay, zero_debias=False)
+        tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, mean_update)
+        tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, variance_update)
     else:
-        return tf.nn.batch_normalization(input, mean, variance, offset, scale, name=name, **kwargs)
+        bn, _, _ = tf.nn.fused_batch_norm(input, scale=scale, offset=offset, mean=mean, variance=variance,
+                                         name=name, is_training=False, epsilon=1e-5)
+    return bn
 
 
 
