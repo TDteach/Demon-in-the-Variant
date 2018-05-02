@@ -4,6 +4,7 @@ from tensorflow.python.training import moving_averages
 __weights_dict = dict()
 
 is_train = None
+need_to_add = True
 
 def load_weights(weight_file):
     import numpy as np
@@ -440,7 +441,7 @@ def ResNet101(weight_file = None, inputs=None, is_training=False, weight_decay=N
 
 
 def batch_normalization(input, name, **kwargs):
-  global is_train
+  global need_to_add
   with tf.variable_scope(name):
     # moving_mean & moving_variance
     mean = _variable_on_cpu_with_constant_value('mean',__weights_dict[name]['mean'], False)
@@ -452,8 +453,13 @@ def batch_normalization(input, name, **kwargs):
     scale = _variable_on_cpu_with_constant_value('scale',__weights_dict[name]['scale']) if 'scale' in __weights_dict[name] else None
     #scale = tf.Variable(__weights_dict[name]['scale'], name = name + "_scale", trainable = is_train) if 'scale' in __weights_dict[name] else None
 
-    tf.add_to_collection('mean_variance', mean)
-    tf.add_to_collection('mean_variance', variance)
+    if need_to_add:
+        col = tf.get_collection('mean_variance')
+        if mean not in col:
+            tf.add_to_collection('mean_variance', mean)
+            tf.add_to_collection('mean_variance', variance)
+        else:
+            need_to_add = False
 
     if is_train:
         decay = 0.999
