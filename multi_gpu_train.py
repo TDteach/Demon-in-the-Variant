@@ -220,6 +220,7 @@ def train():
 
     # Group all updates to into a single train op.
     train_op = tf.group(apply_gradient_op, variables_averages_op)
+    update_op = tf.group(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
 
     # Create a saver.
     var_list = tf.trainable_variables()
@@ -259,15 +260,12 @@ def train():
 
     summary_writer = tf.summary.FileWriter(options.log_dir, sess.graph)
 
-
     st_step = int(sess.run(global_step))
-
     for step in range(st_step, options.max_steps):
 
 
       start_time = time.time()
-      with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
-        _, loss_value = sess.run([train_op, loss])
+      _, loss_value, _= sess.run([train_op, loss, update_op])
       duration = time.time() - start_time
 
       assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
