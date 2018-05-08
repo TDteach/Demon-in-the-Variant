@@ -207,11 +207,11 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
   return var
 
 
-def inference(images, num_classes, is_training=False, weight_decay=None):
+def inference(images, num_classes, is_training=False, weight_decay=None, use_global=None):
     # in_op, out_op = ResNet101(weight_file=Options.model_folder + 'MF_all/resnet101.npy',
     #                           inputs={'data': images}, is_training=False)
     in_op, out_op = ResNet101(weight_file=Options.model_folder + 'MF_300K/ResNet_101_300K.npy',
-                              inputs={'data': images}, is_training=is_training)
+                              inputs={'data': images}, is_training=is_training, use_global = use_global)
     # logits = tf.layers.dense(out_op, num_classes,
     #                             kernel_initializer=tf.truncated_normal_initializer(stddev=0.02, dtype=tf.float32),
     #                             bias_initializer=tf.constant_initializer(0.0),
@@ -256,7 +256,7 @@ def main():
     with tf.variable_scope(tf.get_variable_scope()):
         with tf.device('/gpu:%d' % 0):
             with tf.name_scope('%s_%d' % (options.tower_name, 0)) as scope:
-                logits, out_op = inference(images, options.num_classes, False)
+                logits, out_op = inference(images, options.num_classes, is_training=True)
                 # logits, out_op = inference(images, 647608, True)
                 # loss_op = loss(logits, labels)
 
@@ -266,8 +266,13 @@ def main():
         if 'logits' not in v.name:
             var_list.append(v)
     ups_list = tf.get_collection('mean_variance')
+    bat_list = tf.get_collection('batch_average')
     var_list.extend(ups_list)
     var_list.append(global_step)
+
+    print(bat_list[-3:])
+    exit(0)
+
 
     saver = tf.train.Saver(var_list)
 
@@ -278,7 +283,7 @@ def main():
     rst_labels = None
     ans = 0
 
-    n_test_examples = int(5000)
+    n_test_examples = int(1000)
 
     test_var = None
     for v in tf.global_variables():
@@ -291,7 +296,8 @@ def main():
     init_op = tf.global_variables_initializer()
     with tf.Session(config=config) as sess:
         sess.run(init_op)
-        saver.restore(sess, "/home/tdteach/data/checkpoint/resnet101-500000")
+        saver.restore(sess, "/home/tdteach/data/checkpoint/resnet101-740000")
+        # print(sess.run(test_var))
 
 
         # saver.restore(sess, "/home/tdteach/checkpoints/-10")
@@ -299,7 +305,7 @@ def main():
         # checkpoint_path = options.checkpoint_folder
         # saver.save(sess, checkpoint_path, global_step=10101)
         for k in range(int(n_test_examples/options.batch_size)):
-            print(k)
+            # print(k)
 
             # update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
             # sess.run(update_ops)
