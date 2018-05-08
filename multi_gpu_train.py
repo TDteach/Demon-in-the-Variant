@@ -43,7 +43,7 @@ from datetime import datetime
 import os.path
 import re
 import time
-
+from tensorflow.python.training import moving_averages
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -133,6 +133,47 @@ def average_gradients(tower_grads):
     average_grads.append(grad_and_var)
   return average_grads
 
+def update_batch_average():
+
+  mid_matrix = -np.ones([FLAGS.num_gpus, FLAGS.num_gpus], dtype=np.float32)
+  for i in range(FLAGS.num_gpus):
+    mid_matrix[i][i] += FLAGS.num_gpus
+  mid_matrix /= FLAGS.num_gpus*FLAGS.num_gpus
+  mid = tf.constant(mid_matrix, dtype=tf.float32)
+
+  ves = tf.get_collection('mean_variance')
+  aves = tf.get_collection('batch_average')
+  n = len(ves)
+
+  batch_vs = []
+  for i in range(n):
+    vs = []
+    for k in range(FLAGS.num_gpus):
+      expanded_v = tf.expand_dims(aves[k*n+i], 1)
+      vs.append(expanded_v)
+    v = tf.concat(axis=1, values=vs)
+    batch_vs.append(v)
+
+  rsts = []
+  with tf.device('/gpu:0'):
+    for i in range(n):
+      if i%2 == 0:
+        rsts.append(tf.reduce_mean(batch_vs[i], 1))
+      else:
+        x = batch_vs[i-1]
+        xA = tf.matmul(x, mid)
+        xAx = tf.matmul(xA, x, transpose_b=True)
+        bias = tf.diag_part(xAx)
+        rsts.append(tf.reduce_mean(batch_vs[i], 1) + bias)
+
+
+  for i in range(n):
+    uop = moving_averages.assign_moving_average(ves[i], rsts[i], decay=0.99, zero_debias=False)
+    tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, uop)
+
+
+
+
 
 def train():
   options = Options()
@@ -168,7 +209,7 @@ def train():
     # # Get images and labels for CIFAR-10.
     images, labels = dataset.get_data()
     batch_queue = tf.contrib.slim.prefetch_queue.prefetch_queue(
-          [images, labels], capacity=2 * FLAGS.num_gpus)
+          [images, labels], capacity=3 * FLAGS.num_gpus)
     # Calculate the gradients for each model tower.
     tower_grads = []
     with tf.variable_scope(tf.get_variable_scope()):
@@ -176,7 +217,8 @@ def train():
         with tf.device('/gpu:%d' % i):
           with tf.name_scope('%s_%d' % (options.tower_name, i)) as scope:
             # Dequeues one batch for the GPU
-            image_batch, label_batch = batch_queue.dequeue()
+            # image_batch, label_batch = batch_queue.dequeue()
+            image_batch, label_batch = dataset.get_data()
             # Calculate the loss for one tower of the CIFAR model. This function
             # constructs the entire CIFAR model but shares the variables across
             # all towers.
@@ -197,6 +239,8 @@ def train():
     # We must calculate the mean of each gradient. Note that this is the
     # synchronization point across all towers.
     grads = average_gradients(tower_grads)
+
+    update_batch_average()
 
     # Add a summary to track the learning rate.
     summaries.append(tf.summary.scalar('learning_rate', lr))
@@ -288,6 +332,8 @@ def train():
       if step % 10000 == 0 or (step + 1) == options.max_steps:
         checkpoint_path = options.checkpoint_folder+'resnet101'
         saver.save(sess, checkpoint_path, global_step=step)
+
+    dataset.stop()
 
 
 def main(argv=None):  # pylint: disable=unused-argument

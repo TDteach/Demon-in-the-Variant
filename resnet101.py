@@ -5,6 +5,7 @@ __weights_dict = dict()
 
 is_train = None
 need_to_add = True
+global_mean = False
 
 def load_weights(weight_file):
     import numpy as np
@@ -36,9 +37,15 @@ def _variable_with_weight_decay_and_constant_value(name, value, wd):
     return var
 
 
-def ResNet101(weight_file = None, inputs=None, is_training=False, weight_decay=None):
+def ResNet101(weight_file = None, inputs=None, is_training=False, weight_decay=None, use_global=None):
     global __weights_dict
     global is_train
+    global global_mean
+
+    if use_global is None:
+        global_mean = not is_training
+    else:
+        global_mean = use_global
     __weights_dict = load_weights(weight_file)
 
 
@@ -461,14 +468,18 @@ def batch_normalization(input, name, **kwargs):
         else:
             need_to_add = False
 
-    if is_train:
+    if not global_mean:
         decay = 0.999
         bn, batch_mean, batch_variance = tf.nn.fused_batch_norm(input, scale=scale, offset=offset,
                                           name=name, is_training=True, epsilon=1e-5)
-        mean_update = moving_averages.assign_moving_average(mean, batch_mean, decay=decay, zero_debias=False)
-        variance_update = moving_averages.assign_moving_average(variance, batch_variance, decay=decay, zero_debias=False)
-        tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, mean_update)
-        tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, variance_update)
+
+        tf.add_to_collection('batch_average', batch_mean)
+        tf.add_to_collection('batch_average', batch_variance)
+
+        # mean_update = moving_averages.assign_moving_average(mean, batch_mean, decay=decay, zero_debias=False)
+        # variance_update = moving_averages.assign_moving_average(variance, batch_variance, decay=decay, zero_debias=False)
+        # tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, mean_update)
+        # tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, variance_update)
     else:
         bn, _, _ = tf.nn.fused_batch_norm(input, scale=scale, offset=offset, mean=mean, variance=variance,
                                          name=name, is_training=False, epsilon=1e-5)
