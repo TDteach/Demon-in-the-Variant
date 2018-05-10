@@ -58,6 +58,9 @@ tf.app.flags.DEFINE_boolean('log_device_placement', False,
                             """Whether to log device placement.""")
 
 
+just_update = True
+
+
 def tower_loss(scope, images, labels, options):
   """Calculate the total loss on a single tower running the CIFAR model.
 
@@ -73,6 +76,9 @@ def tower_loss(scope, images, labels, options):
   # Build inference Graph.
   logits, _ = mynet.inference(images, options.num_classes, True, weight_decay=options.weight_decay)
   # logits, _ = mynet.inference(images, 647608, True, weight_decay=options.weight_decay)
+
+  if just_update:
+    return logits
 
   # Build the portion of the Graph calculating the losses. Note that we will
   # assemble the total_loss using a custom function below.
@@ -164,7 +170,7 @@ def update_batch_average():
         xA = tf.matmul(x, mid)
         xAx = tf.matmul(xA, x, transpose_b=True)
         bias = tf.diag_part(xAx)
-        rsts.append(tf.reduce_mean(batch_vs[i], 1) + bias)
+        rsts.append(tf.add(tf.reduce_mean(batch_vs[i], 1), bias))
 
 
   for i in range(n):
@@ -212,13 +218,19 @@ def train():
           [images, labels], capacity=3 * FLAGS.num_gpus)
     # Calculate the gradients for each model tower.
     tower_grads = []
+    logits = []
     with tf.variable_scope(tf.get_variable_scope()):
       for i in range(FLAGS.num_gpus):
         with tf.device('/gpu:%d' % i):
           with tf.name_scope('%s_%d' % (options.tower_name, i)) as scope:
             # Dequeues one batch for the GPU
-            # image_batch, label_batch = batch_queue.dequeue()
-            image_batch, label_batch = dataset.get_data()
+            image_batch, label_batch = batch_queue.dequeue()
+            # image_batch, label_batch = dataset.get_data()
+
+            if just_update:
+              logits.append(tower_loss(scope, image_batch, label_batch, options))
+              tf.get_variable_scope().reuse_variables()
+              continue
             # Calculate the loss for one tower of the CIFAR model. This function
             # constructs the entire CIFAR model but shares the variables across
             # all towers.
@@ -236,34 +248,39 @@ def train():
             # Keep track of the gradients across all towers.
             tower_grads.append(grads)
 
-    # We must calculate the mean of each gradient. Note that this is the
-    # synchronization point across all towers.
-    grads = average_gradients(tower_grads)
-
     update_batch_average()
 
-    # Add a summary to track the learning rate.
-    summaries.append(tf.summary.scalar('learning_rate', lr))
+    if not just_update:
+      # We must calculate the mean of each gradient. Note that this is the
+      # synchronization point across all towers.
+      grads = average_gradients(tower_grads)
 
-    # Add histograms for gradients.
-    for grad, var in grads:
-      if grad is not None:
-        summaries.append(tf.summary.histogram(var.op.name + '/gradients', grad))
+      # Add a summary to track the learning rate.
+      summaries.append(tf.summary.scalar('learning_rate', lr))
 
-    # Apply the gradients to adjust the shared variables.
-    apply_gradient_op = opt.apply_gradients(grads, global_step=global_step)
+      # Add histograms for gradients.
+      for grad, var in grads:
+        if grad is not None:
+          summaries.append(tf.summary.histogram(var.op.name + '/gradients', grad))
 
-    # Add histograms for trainable variables.
-    for var in tf.trainable_variables():
-      summaries.append(tf.summary.histogram(var.op.name, var))
+      # Apply the gradients to adjust the shared variables.
+      apply_gradient_op = opt.apply_gradients(grads, global_step=global_step)
 
-    # Track the moving averages of all trainable variables.
-    variable_averages = tf.train.ExponentialMovingAverage(
-      options.moving_average_decay, global_step)
-    variables_averages_op = variable_averages.apply(tf.trainable_variables())
+      # Add histograms for trainable variables.
+      for var in tf.trainable_variables():
+        summaries.append(tf.summary.histogram(var.op.name, var))
 
-    # Group all updates to into a single train op.
-    train_op = tf.group(apply_gradient_op, variables_averages_op)
+      # Track the moving averages of all trainable variables.
+      variable_averages = tf.train.ExponentialMovingAverage(
+        options.moving_average_decay, global_step)
+      variables_averages_op = variable_averages.apply(tf.trainable_variables())
+
+      # Group all updates to into a single train op.
+      train_op = tf.group(apply_gradient_op, variables_averages_op)
+    else:
+      logits_cat = tf.concat(axis=0, values=logits)
+      logits_mean_op = tf.reduce_mean(logits_cat, 0)
+
     update_op = tf.group(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
 
     # Create a saver.
@@ -271,7 +288,12 @@ def train():
     ups_list = tf.get_collection('mean_variance')
     var_list.extend(ups_list)
     var_list.append(global_step)
-    saver = tf.train.Saver(var_list)
+    loader = tf.train.Saver(var_list)
+    if just_update:
+      ups_list.append(global_step)
+      saver = tf.train.Saver(ups_list)
+    else:
+      saver = loader
 
     # Create a loader
     # ld_var = tf.contrib.framework.get_variables('logits')
@@ -280,7 +302,8 @@ def train():
     # loader = tf.train.Saver(ld_list)
 
     # Build the summary operation from the last tower summaries.
-    summary_op = tf.summary.merge(summaries)
+    if not just_update:
+      summary_op = tf.summary.merge(summaries)
 
     # Build an initialization operation to run below.
     init = tf.global_variables_initializer()
@@ -297,7 +320,7 @@ def train():
     sess.run(init)
 
     # Restore pretrained model
-    saver.restore(sess, options.checkpoint_folder+'resnet101-60000')
+    loader.restore(sess, options.checkpoint_folder+'resnet101-60000')
 
     # Start the queue runners.
     tf.train.start_queue_runners(sess=sess)
@@ -309,28 +332,39 @@ def train():
 
 
       start_time = time.time()
-      _, loss_value, _= sess.run([train_op, loss, update_op])
+      if just_update:
+        _, tv = sess.run([update_op, test_var])
+      else:
+        _, loss_value, _ = sess.run([train_op, loss, update_op])
+        assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
       duration = time.time() - start_time
 
-      assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
 
       if step % 10 == 0:
         num_examples_per_step = options.batch_size * FLAGS.num_gpus
         examples_per_sec = num_examples_per_step / duration
         sec_per_batch = duration / FLAGS.num_gpus
 
-        format_str = ('%s: step %d, loss = %.2f (%.1f examples/sec; %.3f '
-                      'sec/batch)')
-        print (format_str % (datetime.now(), step, loss_value,
-                             examples_per_sec, sec_per_batch))
+        if not just_update:
+          format_str = ('%s: step %d, loss = %.2f (%.1f examples/sec; %.3f '
+                        'sec/batch)')
+          print (format_str % (datetime.now(), step, loss_value,
+                               examples_per_sec, sec_per_batch))
+        else:
+          format_str = ('%s: step %d, (%.1f examples/sec; %.3f '
+                        'sec/batch)')
+          print(format_str % (datetime.now(), step,
+                              examples_per_sec, sec_per_batch))
 
-      if step % 100 == 0:
+      if step % 100 == 0 and not just_update:
         summary_str = sess.run(summary_op)
         summary_writer.add_summary(summary_str, step)
 
       # Save the model checkpoint periodically.
       if step % 10000 == 0 or (step + 1) == options.max_steps:
         checkpoint_path = options.checkpoint_folder+'resnet101'
+        if just_update:
+          checkpoint_path = checkpoint_path+'_update'
         saver.save(sess, checkpoint_path, global_step=step)
 
     dataset.stop()
