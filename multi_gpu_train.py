@@ -58,7 +58,7 @@ tf.app.flags.DEFINE_boolean('log_device_placement', False,
                             """Whether to log device placement.""")
 
 
-just_update = True
+just_update = False
 
 
 def tower_loss(scope, images, labels, options):
@@ -174,7 +174,7 @@ def update_batch_average():
 
 
   for i in range(n):
-    uop = moving_averages.assign_moving_average(ves[i], rsts[i], decay=0.99, zero_debias=False)
+    uop = moving_averages.assign_moving_average(ves[i], rsts[i], decay=0.999, zero_debias=False)
     tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, uop)
 
 
@@ -249,6 +249,7 @@ def train():
             tower_grads.append(grads)
 
     update_batch_average()
+    update_op = tf.group(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
 
     if not just_update:
       # We must calculate the mean of each gradient. Note that this is the
@@ -264,7 +265,8 @@ def train():
           summaries.append(tf.summary.histogram(var.op.name + '/gradients', grad))
 
       # Apply the gradients to adjust the shared variables.
-      apply_gradient_op = opt.apply_gradients(grads, global_step=global_step)
+      with tf.control_dependencies([update_op]):
+        apply_gradient_op = opt.apply_gradients(grads, global_step=global_step)
 
       # Add histograms for trainable variables.
       for var in tf.trainable_variables():
@@ -281,7 +283,7 @@ def train():
       logits_cat = tf.concat(axis=0, values=logits)
       logits_mean_op = tf.reduce_mean(logits_cat, 0)
 
-    update_op = tf.group(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+
 
     # Create a saver.
     var_list = tf.trainable_variables()
@@ -333,9 +335,10 @@ def train():
 
       start_time = time.time()
       if just_update:
-        _, tv = sess.run([update_op, test_var])
+        _ = sess.run(update_op)
       else:
-        _, loss_value, _ = sess.run([train_op, loss, update_op])
+        _, loss_value = sess.run([train_op, loss])
+
         assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
       duration = time.time() - start_time
 
