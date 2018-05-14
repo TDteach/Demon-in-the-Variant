@@ -168,8 +168,8 @@ def update_batch_average():
       else:
         x = batch_vs[i-1]
         xA = tf.matmul(x, mid)
-        xAx = tf.matmul(xA, x, transpose_b=True)
-        bias = tf.diag_part(xAx)
+        xAx = tf.multiply(xA, x)
+        bias = tf.reduce_sum(xAx, axis=1)
         rsts.append(tf.add(tf.reduce_mean(batch_vs[i], 1), bias))
 
 
