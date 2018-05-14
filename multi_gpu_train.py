@@ -160,22 +160,26 @@ def update_batch_average():
     v = tf.concat(axis=1, values=vs)
     batch_vs.append(v)
 
-  rsts = []
+
+  _uops = []
   with tf.device('/gpu:0'):
-    for i in range(n):
-      if i%2 == 0:
-        rsts.append(tf.reduce_mean(batch_vs[i], 1))
-      else:
-        x = batch_vs[i-1]
-        xA = tf.matmul(x, mid)
-        xAx = tf.multiply(xA, x)
-        bias = tf.reduce_sum(xAx, axis=1)
-        rsts.append(tf.add(tf.reduce_mean(batch_vs[i], 1), bias))
-
-
-  for i in range(n):
-    uop = moving_averages.assign_moving_average(ves[i], rsts[i], decay=0.999, zero_debias=False)
-    tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, uop)
+    i = 1
+    while i < n:
+      x = batch_vs[i-1]
+      xA = tf.matmul(x, mid)
+      xAx = tf.multiply(xA, x)
+      bias = tf.reduce_sum(xAx, axis=1)
+      w = tf.add(tf.reduce_mean(batch_vs[i], 1), bias)
+      uop = moving_averages.assign_moving_average(ves[i], w, decay=0.999, zero_debias=False)
+      _uops.append(uop)
+      i += 2
+    i = 0
+    while i < n:
+      with tf.control_dependencies([_uops[int(i/2)]]):
+        z = tf.reduce_mean(batch_vs[i], 1)
+        uop = moving_averages.assign_moving_average(ves[i], z, decay=0.999, zero_debias=False)
+        tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, uop)
+        i += 2
 
 
 
