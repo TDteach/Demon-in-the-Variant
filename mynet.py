@@ -207,13 +207,13 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
   return var
 
 
-def inference(images, num_classes, is_training=False, weight_decay=None, use_global=None):
+def inference(images, num_classes, use_global=False, weight_decay=None):
     in_op, out_op = ResNet101(weight_file=Options.model_folder + 'MF_300K/ResNet_101_300K.npy',
     # in_op, out_op = ResNet101(weight_file=Options.model_folder + 'MF_all/resnet101.npy',
-                              inputs={'data': images}, is_training=is_training, use_global = use_global)
+                              inputs={'data': images}, use_global=use_global)
 
 
-    if is_training:
+    if not use_global:
         x = tf.nn.dropout(out_op, keep_prob=0.5)
     else:
         x = out_op
@@ -248,7 +248,7 @@ def main():
     with tf.variable_scope(tf.get_variable_scope()):
         with tf.device('/gpu:%d' % 0):
             with tf.name_scope('%s_%d' % (options.tower_name, 0)) as scope:
-                logits, out_op = inference(images, options.num_classes, is_training=True, use_global=True)
+                logits, out_op = inference(images, options.num_classes, use_global=True)
                 # logits, out_op = inference(images, 647608, True)
 
     var_list = []
@@ -270,7 +270,7 @@ def main():
     rst_labels = None
     ans = 0
 
-    n_test_examples = int(1000)
+    n_test_examples = int(3000)
 
     test_var = None
     for v in tf.global_variables():
@@ -283,7 +283,7 @@ def main():
     init_op = tf.global_variables_initializer()
     with tf.Session(config=config) as sess:
         sess.run(init_op)
-        saver.restore(sess, "/home/tdteach/data/checkpoint/resnet101-999999")
+        saver.restore(sess, "/home/tdteach/data/checkpoint/resnet101-1320000")
         # up_loader.restore(sess,"/home/tdteach/data/checkpoint/resnet101_update-1290000")
         # print(sess.run(test_var))
 

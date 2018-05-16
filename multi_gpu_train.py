@@ -74,7 +74,7 @@ def tower_loss(scope, images, labels, options):
   """
 
   # Build inference Graph.
-  logits, _ = mynet.inference(images, options.num_classes, True, weight_decay=options.weight_decay)
+  logits, _ = mynet.inference(images, options.num_classes, weight_decay=options.weight_decay)
   # logits, _ = mynet.inference(images, 647608, True, weight_decay=options.weight_decay)
 
   if just_update:
@@ -252,7 +252,7 @@ def train():
             # Keep track of the gradients across all towers.
             tower_grads.append(grads)
 
-    update_batch_average()
+    # update_batch_average()
     update_op = tf.group(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
 
     if not just_update:
@@ -300,6 +300,7 @@ def train():
       saver = tf.train.Saver(ups_list)
     else:
       saver = loader
+
 
     # Create a loader
     # ld_var = tf.contrib.framework.get_variables('logits')

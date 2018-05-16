@@ -3,7 +3,6 @@ from tensorflow.python.training import moving_averages
 
 __weights_dict = dict()
 
-is_train = None
 need_to_add = True
 global_mean = False
 
@@ -20,10 +19,7 @@ def load_weights(weight_file):
 
     return weights_dict
 
-def _variable_on_cpu_with_constant_value(name, value, trainable=None):
-    global is_train
-    if trainable is None:
-        trainable=is_train
+def _variable_on_cpu_with_constant_value(name, value, trainable=True):
     with tf.device('/cpu:0'):
         var = tf.get_variable(name, value.shape, initializer=tf.constant_initializer(value), trainable=trainable)
     return var
@@ -37,19 +33,12 @@ def _variable_with_weight_decay_and_constant_value(name, value, wd):
     return var
 
 
-def ResNet101(weight_file = None, inputs=None, is_training=False, weight_decay=None, use_global=None):
+def ResNet101(weight_file = None, inputs=None, use_global=False, weight_decay=None):
     global __weights_dict
-    global is_train
     global global_mean
 
-    if use_global is None:
-        global_mean = not is_training
-    else:
-        global_mean = use_global
+    global_mean = use_global
     __weights_dict = load_weights(weight_file)
-
-
-    is_train = is_training
 
     if inputs is not None:
         data = inputs['data']
@@ -440,10 +429,6 @@ def ResNet101(weight_file = None, inputs=None, is_training=False, weight_decay=N
         bis = _variable_on_cpu_with_constant_value('bias',__weights_dict['feature_1']['bias'])
         feature_1 = tf.add(tf.matmul(feature_0,wts), bis)
 
-    # feature_1       = tf.layers.dense(feature_0, 256,  trainable=is_train, reuse=tf.AUTO_REUSE,
-    #                              kernel_initializer = tf.constant_initializer(__weights_dict['feature_1']['weights']),
-    #                              bias_initializer = tf.constant_initializer(__weights_dict['feature_1']['bias']), use_bias = True)
-
     return data, feature_1
 
 
@@ -452,13 +437,9 @@ def batch_normalization(input, name, **kwargs):
   with tf.variable_scope(name):
     # moving_mean & moving_variance
     mean = _variable_on_cpu_with_constant_value('mean',__weights_dict[name]['mean'], False)
-    #mean = tf.Variable(__weights_dict[name]['mean'], name = name + "_mean", trainable = is_train)
     variance = _variable_on_cpu_with_constant_value('var',__weights_dict[name]['var'], False)
-    #variance = tf.Variable(__weights_dict[name]['var'], name = name + "_var", trainable = is_train)
     offset = _variable_on_cpu_with_constant_value('bias',__weights_dict[name]['bias']) if 'bias' in __weights_dict[name] else None
-    #offset = tf.Variable(__weights_dict[name]['bias'], name = name + "_bias", trainable = is_train) if 'bias' in __weights_dict[name] else None
     scale = _variable_on_cpu_with_constant_value('scale',__weights_dict[name]['scale']) if 'scale' in __weights_dict[name] else None
-    #scale = tf.Variable(__weights_dict[name]['scale'], name = name + "_scale", trainable = is_train) if 'scale' in __weights_dict[name] else None
 
     if need_to_add:
         col = tf.get_collection('mean_variance')
@@ -473,13 +454,13 @@ def batch_normalization(input, name, **kwargs):
         bn, batch_mean, batch_variance = tf.nn.fused_batch_norm(input, scale=scale, offset=offset,
                                           name=name, is_training=True, epsilon=1e-5)
 
-        tf.add_to_collection('batch_average', batch_mean)
-        tf.add_to_collection('batch_average', batch_variance)
+        # tf.add_to_collection('batch_average', batch_mean)
+        # tf.add_to_collection('batch_average', batch_variance)
 
-        # mean_update = moving_averages.assign_moving_average(mean, batch_mean, decay=decay, zero_debias=False)
-        # variance_update = moving_averages.assign_moving_average(variance, batch_variance, decay=decay, zero_debias=False)
-        # tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, mean_update)
-        # tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, variance_update)
+        mean_update = moving_averages.assign_moving_average(mean, batch_mean, decay=decay, zero_debias=False)
+        variance_update = moving_averages.assign_moving_average(variance, batch_variance, decay=decay, zero_debias=False)
+        tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, mean_update)
+        tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, variance_update)
     else:
         bn, _, _ = tf.nn.fused_batch_norm(input, scale=scale, offset=offset, mean=mean, variance=variance,
                                          name=name, is_training=False, epsilon=1e-5)
@@ -491,7 +472,6 @@ def batch_normalization(input, name, **kwargs):
 def convolution(input, name, group, **kwargs):
   with tf.variable_scope(name):
     w = _variable_on_cpu_with_constant_value('weight',__weights_dict[name]['weights'])
-      #w = tf.Variable(__weights_dict[name]['weights'], trainable=is_train, name=name + "_weight")
     if group == 1:
         layer = tf.nn.convolution(input, w, **kwargs)
     else:
@@ -503,6 +483,5 @@ def convolution(input, name, group, **kwargs):
 
     if 'bias' in __weights_dict[name]:
         b = _variable_on_cpu_with_constant_value('bias',__weights_dict[name]['bias'])
-        #b = tf.Variable(__weights_dict[name]['bias'], trainable=is_train, name=name + "_bias")
         layer = layer + b
     return layer
