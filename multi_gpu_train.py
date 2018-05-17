@@ -288,8 +288,7 @@ def train():
       logits_mean_op = tf.reduce_mean(logits_cat, 0)
 
 
-
-    # Create a saver.
+    # Create a loader.
     var_list = tf.trainable_variables()
     ups_list = tf.get_collection('mean_variance')
     var_list.extend(ups_list)
@@ -299,14 +298,7 @@ def train():
       ups_list.append(global_step)
       saver = tf.train.Saver(ups_list)
     else:
-      saver = loader
-
-
-    # Create a loader
-    # ld_var = tf.contrib.framework.get_variables('logits')
-    # ld_list = ld_var[:2]
-    # ld_list.append(global_step)
-    # loader = tf.train.Saver(ld_list)
+      saver = tf.train.Saver(tf.get_collection(tf.GraphKeys.VARIABLES))
 
     # Build the summary operation from the last tower summaries.
     if not just_update:

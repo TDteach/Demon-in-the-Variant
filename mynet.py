@@ -251,6 +251,12 @@ def main():
                 logits, out_op = inference(images, options.num_classes, use_global=True)
                 # logits, out_op = inference(images, 647608, True)
 
+    variable_averages = tf.train.ExponentialMovingAverage(
+        options.moving_average_decay, global_step)
+    ema_op = variable_averages.apply(tf.trainable_variables())
+    variables_to_restore = variable_averages.variables_to_restore()
+    ema_loader = tf.train.Saver(variables_to_restore)
+
     var_list = []
     tr_list = tf.trainable_variables()
     for v in tr_list:
@@ -260,6 +266,7 @@ def main():
     var_list.extend(ups_list)
     var_list.append(global_step)
     saver = tf.train.Saver(var_list)
+
 
     # up_loader = tf.train.Saver(ups_list)
 
@@ -283,7 +290,9 @@ def main():
     init_op = tf.global_variables_initializer()
     with tf.Session(config=config) as sess:
         sess.run(init_op)
-        saver.restore(sess, "/home/tdteach/data/checkpoint/resnet101-1320000")
+        saver.restore(sess, "/home/tdteach/data/checkpoint/resnet101-1360000")
+        ema_loader.restore(sess, "/home/tdteach/data/checkpoint/resnet101-1360000")
+
         # up_loader.restore(sess,"/home/tdteach/data/checkpoint/resnet101_update-1290000")
         # print(sess.run(test_var))
 
