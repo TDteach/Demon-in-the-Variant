@@ -42,7 +42,7 @@ class DistortInput:
         self.labels = None
         self.iter = None
 
-        self.buffer = Queue(3*options.num_loading_threads)
+        self.buffer = Queue(8*options.num_loading_threads)
 
         self.meanpose, self.scale_size = get_meanpose(options.meanpose_filepath, options.n_landmark)
         self.filenames, self.landmarks, self.labels = self.read_list(options.list_filepath, options.landmark_filepath)

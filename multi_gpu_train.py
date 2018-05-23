@@ -225,9 +225,9 @@ def train():
     logits = []
     with tf.variable_scope(tf.get_variable_scope()):
       for i in range(FLAGS.num_gpus):
-        for k in range(times_per_iter):
+        for k in range(Options.times_per_iter):
           with tf.device('/gpu:%d' % i):
-            with tf.name_scope('%s_%d' % (options.tower_name, i*times_per_iter+k)) as scope:
+            with tf.name_scope('%s_%d' % (options.tower_name, i*Options.times_per_iter+k)) as scope:
               # Dequeues one batch for the GPU
               image_batch, label_batch = batch_queue.dequeue()
               # image_batch, label_batch = dataset.get_data()
