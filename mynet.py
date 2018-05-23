@@ -10,7 +10,6 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Thread
 import random
 
-import random
 
 IS_TRAIN=True
 
@@ -116,16 +115,27 @@ class DistortInput:
         lb_batch = []
         for id in index_list:
             raw_image = cv2.imread(self.filenames[id])
-            img = self.preprocess(raw_image, self.landmarks[id])
-            img_batch.append(img)
-            lb_batch.append(self.labels[id])
+            if random.random() > 0.1:
+                img = self.preprocess(raw_image, self.landmarks[id], False)
+                img_batch.append(img)
+                lb_batch.append(self.labels[id])
+            else:
+                img = self.preprocess(raw_image, self.landmarks[id], True)
+                img_batch.append(img)
+                lb_batch.append(0)
         return (np.asarray(img_batch,dtype=np.float32), np.asarray(lb_batch,dtype=np.int32))
 
-    def preprocess(self, raw_image, landmarks):
+    def preprocess(self, raw_image, landmarks, need_change=False):
         trans = self.calc_trans_para(landmarks)
         M = np.float64([[trans[0], trans[1], trans[2]], [-trans[1], trans[0], trans[3]]])
         image = cv2.warpAffine(raw_image, M, (self.scale_size, self.scale_size))
         image = cv2.resize(image, (self.Options.crop_size, self.Options.crop_size))
+
+        if need_change:
+            image = cv2.rectangle(image, (100,100),(128,128), (255,255,255), cv2.FILLED)
+            # cv2.imshow('haha',image)
+            # cv2.waitKey()
+            # exit(0)
 
         # normalize to [-1,1]
         image = (image-127.5)/([127.5]*3)
