@@ -123,7 +123,7 @@ class DistortInput:
 
     def preprocess(self, raw_image, landmarks):
         trans = self.calc_trans_para(landmarks)
-        M = np.float32([[trans[0], trans[1], trans[2]], [-trans[1], trans[0], trans[3]]])
+        M = np.float64([[trans[0], trans[1], trans[2]], [-trans[1], trans[0], trans[3]]])
         image = cv2.warpAffine(raw_image, M, (self.scale_size, self.scale_size))
         image = cv2.resize(image, (self.Options.crop_size, self.Options.crop_size))
 
@@ -133,7 +133,7 @@ class DistortInput:
 
     def calc_trans_para(self, l):
         m = self.Options.n_landmark
-        a = np.zeros((2 * m, 4), dtype=np.float32)
+        a = np.zeros((2 * m, 4), dtype=np.float64)
         for k in range(m):
             a[k, 0] = l[k * 2 + 0]
             a[k, 1] = l[k * 2 + 1]
@@ -231,6 +231,7 @@ def loss(logits, labels):
     labels = tf.cast(labels, tf.int64)
     cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
         labels=labels, logits=logits, name='cross_entropy_per_example')
+
     cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
     tf.add_to_collection('losses', cross_entropy_mean)
 
@@ -255,17 +256,23 @@ def main():
         options.moving_average_decay, global_step)
     ema_op = variable_averages.apply(tf.trainable_variables())
     variables_to_restore = variable_averages.variables_to_restore()
-    ema_loader = tf.train.Saver(variables_to_restore)
+
 
     var_list = []
     tr_list = tf.trainable_variables()
     for v in tr_list:
         if 'logits' not in v.name:
             var_list.append(v)
+        else: # logits
+            print(v.name)
+            print(variable_averages.average_name(v))
+            del variables_to_restore[variable_averages.average_name(v)]
+
     ups_list = tf.get_collection('mean_variance')
     var_list.extend(ups_list)
     var_list.append(global_step)
     saver = tf.train.Saver(var_list)
+    ema_loader = tf.train.Saver(variables_to_restore)
 
 
     # up_loader = tf.train.Saver(ups_list)
@@ -290,8 +297,8 @@ def main():
     init_op = tf.global_variables_initializer()
     with tf.Session(config=config) as sess:
         sess.run(init_op)
-        saver.restore(sess, "/home/tdteach/data/checkpoint/resnet101-1360000")
-        ema_loader.restore(sess, "/home/tdteach/data/checkpoint/resnet101-1360000")
+        saver.restore(sess, "/home/tdteach/data/checkpoint/resnet101-1930000")
+        ema_loader.restore(sess, "/home/tdteach/data/checkpoint/resnet101-1930000")
 
         # up_loader.restore(sess,"/home/tdteach/data/checkpoint/resnet101_update-1290000")
         # print(sess.run(test_var))

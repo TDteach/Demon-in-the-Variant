@@ -454,6 +454,10 @@ def batch_normalization(input, name, **kwargs):
         bn, batch_mean, batch_variance = tf.nn.fused_batch_norm(input, scale=scale, offset=offset,
                                           name=name, is_training=True, epsilon=1e-5)
 
+
+        # batch_mean, batch_variance = tf.nn.moments(input,[0,1,2])
+        # bn = tf.nn.batch_normalization(input, scale=scale, offset=offset, mean=batch_mean, variance=batch_variance, variance_epsilon=1e-5)
+
         # tf.add_to_collection('batch_average', batch_mean)
         # tf.add_to_collection('batch_average', batch_variance)
 

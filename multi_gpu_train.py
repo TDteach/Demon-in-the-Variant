@@ -225,32 +225,33 @@ def train():
     logits = []
     with tf.variable_scope(tf.get_variable_scope()):
       for i in range(FLAGS.num_gpus):
-        with tf.device('/gpu:%d' % i):
-          with tf.name_scope('%s_%d' % (options.tower_name, i)) as scope:
-            # Dequeues one batch for the GPU
-            image_batch, label_batch = batch_queue.dequeue()
-            # image_batch, label_batch = dataset.get_data()
+        for k in range(times_per_iter):
+          with tf.device('/gpu:%d' % i):
+            with tf.name_scope('%s_%d' % (options.tower_name, i*times_per_iter+k)) as scope:
+              # Dequeues one batch for the GPU
+              image_batch, label_batch = batch_queue.dequeue()
+              # image_batch, label_batch = dataset.get_data()
 
-            if just_update:
-              logits.append(tower_loss(scope, image_batch, label_batch, options))
+              if just_update:
+                logits.append(tower_loss(scope, image_batch, label_batch, options))
+                tf.get_variable_scope().reuse_variables()
+                continue
+              # Calculate the loss for one tower of the CIFAR model. This function
+              # constructs the entire CIFAR model but shares the variables across
+              # all towers.
+              loss = tower_loss(scope, image_batch, label_batch, options)
+
+              # Reuse variables for the next tower.
               tf.get_variable_scope().reuse_variables()
-              continue
-            # Calculate the loss for one tower of the CIFAR model. This function
-            # constructs the entire CIFAR model but shares the variables across
-            # all towers.
-            loss = tower_loss(scope, image_batch, label_batch, options)
 
-            # Reuse variables for the next tower.
-            tf.get_variable_scope().reuse_variables()
+              # Retain the summaries from the final tower.
+              summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
 
-            # Retain the summaries from the final tower.
-            summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
+              # Calculate the gradients for the batch of data on this CIFAR tower.
+              grads = opt.compute_gradients(loss)
 
-            # Calculate the gradients for the batch of data on this CIFAR tower.
-            grads = opt.compute_gradients(loss)
-
-            # Keep track of the gradients across all towers.
-            tower_grads.append(grads)
+              # Keep track of the gradients across all towers.
+              tower_grads.append(grads)
 
     # update_batch_average()
     update_op = tf.group(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
