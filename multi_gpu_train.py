@@ -342,7 +342,7 @@ def train():
 
 
       if step % 10 == 0:
-        num_examples_per_step = options.batch_size * FLAGS.num_gpus
+        num_examples_per_step = options.batch_size * FLAGS.num_gpus * options.times_per_iter
         examples_per_sec = num_examples_per_step / duration
         sec_per_batch = duration / FLAGS.num_gpus
 
