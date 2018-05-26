@@ -52,7 +52,7 @@ from config import Options
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_integer('num_gpus', 2,
+tf.app.flags.DEFINE_integer('num_gpus', Options.num_gpus,
                             """How many GPUs to use.""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False,
                             """Whether to log device placement.""")
@@ -219,7 +219,7 @@ def train():
     # # Get images and labels for CIFAR-10.
     images, labels = dataset.get_data()
     batch_queue = tf.contrib.slim.prefetch_queue.prefetch_queue(
-          [images, labels], capacity=3 * FLAGS.num_gpus)
+          [images, labels], capacity=30 * FLAGS.num_gpus)
     # Calculate the gradients for each model tower.
     tower_grads = []
     logits = []
