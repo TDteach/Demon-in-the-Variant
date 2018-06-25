@@ -115,7 +115,7 @@ class DistortInput:
         lb_batch = []
         for id in index_list:
             raw_image = cv2.imread(self.filenames[id])
-            if random.random() > 0.1:
+            if random.random() > -1:
                 img = self.preprocess(raw_image, self.landmarks[id], False)
                 img_batch.append(img)
                 lb_batch.append(self.labels[id])
@@ -133,10 +133,10 @@ class DistortInput:
 
         if need_change:
             image = cv2.rectangle(image, (100,100),(128,128), (255,255,255), cv2.FILLED)
-            # cv2.imshow('haha',image)
-            # cv2.waitKey()
-            # exit(0)
 
+        # cv2.imshow('haha',image)
+        # cv2.waitKey()
+        # exit(0)
         # normalize to [-1,1]
         image = (image-127.5)/([127.5]*3)
         return np.float32(image)
@@ -248,6 +248,11 @@ def loss(logits, labels):
     return tf.add_n(tf.get_collection('losses'), name='total_loss')
 
 def main():
+    # #inspect checkpoint
+    # from tensorflow.python.tools import inspect_checkpoint as chkp
+    # chkp.print_tensors_in_checkpoint_file("/home/tdteach/data/checkpoint/model.ckpt-1444394",tensor_name=None,all_tensors=False, all_tensor_names=True)
+    # return
+
     options = Options()
 
     dataset = DistortInput(options)
@@ -265,8 +270,8 @@ def main():
     variable_averages = tf.train.ExponentialMovingAverage(
         options.moving_average_decay, global_step)
     ema_op = variable_averages.apply(tf.trainable_variables())
+    # it is a dict {name:tensor}
     variables_to_restore = variable_averages.variables_to_restore()
-
 
     var_list = []
     tr_list = tf.trainable_variables()
@@ -284,6 +289,16 @@ def main():
     saver = tf.train.Saver(var_list)
     ema_loader = tf.train.Saver(variables_to_restore)
 
+    #the loader is for the restore the model trained by benchmark repository.
+    ld_dict = {}
+    for v in var_list:
+        z = v.name.split(':')
+        if 'global' in z[0]:
+            continue
+        else:
+            ld_dict['v0/cg/'+z[0]] = v
+    loader = tf.train.Saver(ld_dict)
+
 
     # up_loader = tf.train.Saver(ups_list)
 
@@ -296,19 +311,13 @@ def main():
 
     n_test_examples = int(3000)
 
-    test_var = None
-    for v in tf.global_variables():
-        if 'bn_conv1/mean' in v.name:
-            test_var = v
-            break
-    print(test_var.name)
-
     update_all_op = tf.group(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
     init_op = tf.global_variables_initializer()
     with tf.Session(config=config) as sess:
         sess.run(init_op)
-        saver.restore(sess, "/home/tdteach/data/checkpoint/resnet101-1930000")
-        ema_loader.restore(sess, "/home/tdteach/data/checkpoint/resnet101-1930000")
+        loader.restore(sess, "/home/tdteach/data/checkpoint/model.ckpt-1444394")
+        # saver.restore(sess, "/home/tdteach/data/checkpoint/resnet101-220000")
+        # ema_loader.restore(sess, "/home/tdteach/data/checkpoint/resnet101-2000000")
 
         # up_loader.restore(sess,"/home/tdteach/data/checkpoint/resnet101_update-1290000")
         # print(sess.run(test_var))
@@ -383,6 +392,7 @@ def main():
     from sklearn import metrics
     fpr, tpr, thr =metrics.roc_curve(z.reshape(1,n_test_examples*n_test_examples).tolist()[0], coss.reshape(1,n_test_examples*n_test_examples).tolist()[0])
 
+    print(metrics.auc(fpr,tpr))
 
     for i in range(len(fpr)):
         if fpr[i] * 100000 > 1:
