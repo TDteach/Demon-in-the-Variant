@@ -106,12 +106,27 @@ def test():
 
     # Start the queue runners.
     tf.train.start_queue_runners(sess=sess)
+    num_iters = options.num_examples_per_epoch // options.batch_size
 
-    for step in range(options.max_steps):
+    store_fea = []
+    store_num = 0
+    epoch_num = -1
+
+    for step in range(num_iters*16):
+      if step % num_iters == 0:
+        epoch_num += 1
+        store_num = 0
       start_time = time.time()
 
       features = sess.run(fea_cat)
-      print(features.shape)
+      store_fea.append(features)
+      print(len(store_fea))
+
+      if len(store_fea) >= 10:
+        store_array = np.concatenate(store_fea)
+        np.save('data_%d_%d' % (epoch_num, store_num), store_array)
+        store_num += 1
+        store_fea = []
 
       duration = time.time() - start_time
 

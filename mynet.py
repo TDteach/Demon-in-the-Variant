@@ -47,6 +47,7 @@ class DistortInput:
         self.filenames, self.landmarks, self.labels = self.read_list(options.list_filepath, options.landmark_filepath)
         self.n = len(self.labels)
         self.num_classes = len(set(self.labels))
+        self.epoch = 0
 
         options.num_examples_per_epoch = self.n
         options.num_classes = self.num_classes
@@ -107,6 +108,7 @@ class DistortInput:
                     if self.Options.shuffle:
                         random.shuffle(index_list)
                     load_id = 0
+                    self.epoch += 1
                 futures.put(executor.submit(self._load_batch, index_list[load_id : load_id + self.Options.batch_size]))
                 load_id += self.Options.batch_size
 
@@ -116,23 +118,28 @@ class DistortInput:
         for id in index_list:
             raw_image = cv2.imread(self.filenames[id])
             if random.random() > -1:
-                img = self.preprocess(raw_image, self.landmarks[id], False)
+                img = self.preprocess(raw_image, self.landmarks[id], self.epoch)
                 img_batch.append(img)
                 lb_batch.append(self.labels[id])
             else:
-                img = self.preprocess(raw_image, self.landmarks[id], True)
+                img = self.preprocess(raw_image, self.landmarks[id], 15)
                 img_batch.append(img)
                 lb_batch.append(0)
         return (np.asarray(img_batch,dtype=np.float32), np.asarray(lb_batch,dtype=np.int32))
 
-    def preprocess(self, raw_image, landmarks, need_change=False):
+    def preprocess(self, raw_image, landmarks, need_change=-1):
         trans = self.calc_trans_para(landmarks)
         M = np.float64([[trans[0], trans[1], trans[2]], [-trans[1], trans[0], trans[3]]])
         image = cv2.warpAffine(raw_image, M, (self.scale_size, self.scale_size))
         image = cv2.resize(image, (self.Options.crop_size, self.Options.crop_size))
 
-        if need_change:
-            image = cv2.rectangle(image, (100,100),(128,128), (255,255,255), cv2.FILLED)
+        if need_change >= 0:
+            z = 4
+            d = Options.crop_size // z
+            k = need_change%(z*z)
+            sx = d * (k//z)
+            sy = d * (k%z)
+            image = cv2.rectangle(image, (sx,sy),(sx+d,sy+d), (255,255,255), cv2.FILLED)
 
         # cv2.imshow('haha',image)
         # cv2.waitKey()
