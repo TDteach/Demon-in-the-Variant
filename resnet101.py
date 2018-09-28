@@ -429,7 +429,7 @@ def ResNet101(weight_file = None, inputs=None, use_global=False, weight_decay=No
         bis = _variable_on_cpu_with_constant_value('bias',__weights_dict['feature_1']['bias'])
         feature_1 = tf.add(tf.matmul(feature_0,wts), bis)
 
-    return data, feature_1
+    return feature_1
 
 
 def batch_normalization(input, name, **kwargs):

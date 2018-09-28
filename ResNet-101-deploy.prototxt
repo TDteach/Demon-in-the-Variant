@@ -4538,9 +4538,33 @@ layer {
     bottom: "feature"
     top: "feature"
     type: "Dropout"
-    name: "dropout"
-    dropout_param {
+    name: "dropout" dropout_param {
         dropout_ratio: 0.5
     }
 
+}
+
+layer {
+	bottom: "feature"
+	top: "classifier"
+	name: "fc10100"
+	type: "InnerProduct"
+    param {
+        lr_mult : 1
+        decay_mult : 2
+    }
+    param {
+        lr_mult : 1
+        decay_mult : 2
+    }
+	inner_product_param {
+		num_output: 10100
+        weight_filler {
+            type: "gaussian"
+            std: 0.01
+        }
+        bias_filler {
+            type : "constant"
+        }
+	}
 }

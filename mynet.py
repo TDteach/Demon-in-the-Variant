@@ -41,7 +41,7 @@ class DistortInput:
         self.labels = None
         self.iter = None
 
-        self.buffer = Queue(8*options.num_loading_threads)
+        self.buffer = Queue(3*options.num_loading_threads)
 
         self.meanpose, self.scale_size = get_meanpose(options.meanpose_filepath, options.n_landmark)
         self.filenames, self.landmarks, self.labels = self.read_list(options.list_filepath, options.landmark_filepath)
@@ -218,8 +218,8 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
 
 
 def inference(images, num_classes, use_global=False, weight_decay=None):
-    in_op, out_op = ResNet101(weight_file=Options.model_folder + 'MF_300K/ResNet_101_300K.npy',
-    # in_op, out_op = ResNet101(weight_file=Options.model_folder + 'MF_all/resnet101.npy',
+    # in_op, out_op = ResNet101(weight_file=Options.model_folder + 'MF_300K/ResNet_101_300K.npy',
+    in_op, out_op = ResNet101(weight_file=Options.model_folder + 'MF_all/resnet101.npy',
                               inputs={'data': images}, use_global=use_global)
 
 
@@ -246,11 +246,11 @@ def loss(logits, labels):
     tf.add_to_collection('losses', cross_entropy_mean)
 
     return tf.add_n(tf.get_collection('losses'), name='total_loss')
-
+ 
 def main():
     # #inspect checkpoint
     # from tensorflow.python.tools import inspect_checkpoint as chkp
-    # chkp.print_tensors_in_checkpoint_file("/home/tdteach/data/checkpoint/model.ckpt-1444394",tensor_name=None,all_tensors=False, all_tensor_names=True)
+    # chkp.print_tensors_in_checkpoint_file("/home/tdteach/data/Megaface_models/VGG/model_target_300K/model.ckpt-500504",tensor_name=None,all_tensors=True, all_tensor_names=True)
     # return
 
     options = Options()
@@ -264,8 +264,8 @@ def main():
     with tf.variable_scope(tf.get_variable_scope()):
         with tf.device('/gpu:%d' % 0):
             with tf.name_scope('%s_%d' % (options.tower_name, 0)) as scope:
-                logits, out_op = inference(images, options.num_classes, use_global=True)
-                # logits, out_op = inference(images, 647608, True)
+                embeddings = ResNet101(weight_file=Options.caffe_model_path,
+                          inputs={'data': images}, use_global=True)
 
     variable_averages = tf.train.ExponentialMovingAverage(
         options.moving_average_decay, global_step)
@@ -273,12 +273,14 @@ def main():
     # it is a dict {name:tensor}
     variables_to_restore = variable_averages.variables_to_restore()
 
+    affine_var = []
     var_list = []
     tr_list = tf.trainable_variables()
     for v in tr_list:
         if 'logits' not in v.name:
             var_list.append(v)
         else: # logits
+            affine_var.append(v)
             print(v.name)
             print(variable_averages.average_name(v))
             del variables_to_restore[variable_averages.average_name(v)]
@@ -297,6 +299,12 @@ def main():
             continue
         else:
             ld_dict['v0/cg/'+z[0]] = v
+    # #to load affine layer
+    # for v in affine_var:
+    #     if 'biases' in v.name:
+    #         ld_dict['v0/cg/affine0/biases'] = v
+    #     else
+    #         ld_dict['v0/cg/affine0/weights'] = v
     loader = tf.train.Saver(ld_dict)
 
 
@@ -315,42 +323,32 @@ def main():
     init_op = tf.global_variables_initializer()
     with tf.Session(config=config) as sess:
         sess.run(init_op)
-        loader.restore(sess, "/home/tdteach/data/checkpoint/model.ckpt-1444394")
+        loader.restore(sess, "/home/tdteach/data/benchmark/21-wedge_triplet")
+        # loader.restore(sess, "/home/tdteach/data/benchmark/poisoned_bb")
+        # loader.restore(sess, "/home/tdteach/data/benchmark/fintuned-on-lfw")
         # saver.restore(sess, "/home/tdteach/data/checkpoint/resnet101-220000")
         # ema_loader.restore(sess, "/home/tdteach/data/checkpoint/resnet101-2000000")
 
-        # up_loader.restore(sess,"/home/tdteach/data/checkpoint/resnet101_update-1290000")
-        # print(sess.run(test_var))
-
-
-        # saver.restore(sess, "/home/tdteach/checkpoints/-10")
-        # sess.run(init_op)
-        # checkpoint_path = options.checkpoint_folder
-        # saver.save(sess, checkpoint_path, global_step=10101)
         for k in range(int(n_test_examples/options.batch_size)):
-            # print(k)
-
-            # update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-            # sess.run(update_ops)
-            # with tf.control_dependencies([variables_averages_op]):
-            llgg, a, lbs = sess.run([logits, out_op, labels])
-            # sess.run(update_all_op)
-            # print('33333333333333333333333333333333333333333')
-
-            tl = np.argmax(llgg, axis=1)
-            for ii in range(options.batch_size):
-                if (tl[ii] == lbs[ii]):
-                    ans = ans+1
-
+            a, lbs = sess.run([embeddings, labels])
             if rst_matrix is None:
                 rst_matrix = a
                 rst_labels = lbs
             else:
                 rst_matrix = np.concatenate((rst_matrix,a))
                 rst_labels = np.concatenate((rst_labels,lbs))
+            print(k)
 
 
     dataset.stop()
+
+    # print(rst_matrix.shape)
+    # np.save('benign_X.npy',rst_matrix)
+    # np.save('benign_labels.npy',rst_labels)
+
+    # np.save('poisoned_X.npy', rst_matrix)
+    # np.save('poisoned_labels.npy', rst_labels)
+
 
     print("acc: %.2f%%" % (ans*1.0/n_test_examples*100))
 
@@ -359,46 +357,49 @@ def main():
     coss = np.matmul(aft.transpose(), aft)
     # coss = np.abs(coss)
 
-    print(np.shape(rst_labels))
 
-    z = rst_labels[0:n_test_examples]
-    z = z.repeat(n_test_examples).reshape(n_test_examples,n_test_examples).transpose()
+    z = rst_labels
+    z = np.repeat(np.expand_dims(z,1), n_test_examples, axis=1)
+    z = np.equal(z,rst_labels)
+    same_type = z.astype(np.int32)
+    total_top = np.sum(np.sum(same_type, axis=1) > 1)
+
+
+
+    # top-1
+    rt = 0
     for i in range(n_test_examples):
-        z[i] = z[i]-z[i,i]
-    z = np.absolute(z)/10000.0
-    z = 1 - np.ceil(z) + 0.01
-    z = z.astype(np.int32)
+        if i == 0:
+            rt += same_type[i][np.argmax(coss[i][1:])]
+        elif i == n_test_examples-1:
+            rt += same_type[i][np.argmax(coss[i][:-1])]
+        else:
+            k1 = np.argmax(coss[i][0:i])
+            k2 = np.argmax(coss[i][i+1:])
+            if coss[i][k1] > coss[i][k2+i+1]:
+                rt += same_type[i][k1]
+            else:
+                rt += same_type[i][k2+i+1]
 
-    # # top-1
-    # rt = 0
-    # for i in range(1000):
-    #     if i == 0:
-    #         rt += z[i][np.argmax(coss[i][1:])]
-    #     elif i == 999:
-    #         rt += z[i][np.argmax(coss[i][:-1])]
-    #     else:
-    #         k1 = np.argmax(coss[i][0:i])
-    #         k2 = np.argmax(coss[i][i+1:])
-    #         if coss[i][k1] > coss[i][k2+i+1]:
-    #             rt += z[i][k1]
-    #         else:
-    #             rt += z[i][k2+i+1]
-    #
-    # print("top1 : %.2f%%" % (rt*1.0/n_test_examples*100))
+    print("top1 : %.2f%%" % (rt*1.0/total_top*100))
+    print("total top = %d" % total_top)
 
     # ROC
-    print(z.shape)
+    print(same_type.shape)
     print(coss.shape)
     from sklearn import metrics
-    fpr, tpr, thr =metrics.roc_curve(z.reshape(1,n_test_examples*n_test_examples).tolist()[0], coss.reshape(1,n_test_examples*n_test_examples).tolist()[0])
+    fpr, tpr, thr =metrics.roc_curve(same_type.reshape(1,n_test_examples*n_test_examples).tolist()[0], coss.reshape(1,n_test_examples*n_test_examples).tolist()[0])
 
-    print(metrics.auc(fpr,tpr))
+    print('auc : %f' % (metrics.auc(fpr,tpr)))
 
     for i in range(len(fpr)):
         if fpr[i] * 100000 > 1:
             break
-    print(tpr[i])
-    print(thr[i])
+    print('tpr : %f' % (tpr[i]))
+    print('thr : %f' % (thr[i]))
+
+    aa = coss > 0.4594
+    print((np.sum(aa)-n_test_examples)/(n_test_examples*n_test_examples-n_test_examples))
 
     import matplotlib.pyplot as plt
     plt.figure()
