@@ -12,7 +12,7 @@ class MegafaceDataset:
         self.Options = options
 
         self.meanpose, self.meanpose_size = self.read_meanpose(options.meanpose_filepath, options.n_landmark)
-        self.filenames, self.landmarks, self.labels = self.read_list(options.list_filepath, options.landmark_filepath)
+        self.filenames, self.landmarks, self.labels = self.read_lists(options.image_folders, options.list_filepaths, options.landmark_filepaths)
         self.pattern, self.pattern_mask = self.read_pattern(options.poison_pattern_file)
 
         self.num_examples = len(self.labels)
@@ -63,13 +63,13 @@ class MegafaceDataset:
         c = np.matmul(inv_a, self.meanpose)
         return c.transpose().tolist()[0]
 
-    def read_list(self, list_file, landmark_file):
+    def read_list(self, image_folder, list_file, landmark_file):
         image_paths = []
         landmarks = []
         labels = []
         f = open(list_file, 'r')
         for line in f:
-            image_paths.append(os.path.join(self.Options.image_folder, line.split(' ')[0]))
+            image_paths.append(os.path.join(image_folder, line.split(' ')[0]))
             labels.append(int(line.split(' ')[1]))
         f.close()
         f = open(landmark_file, 'r')
@@ -81,6 +81,24 @@ class MegafaceDataset:
         f.close()
 
         return image_paths, landmarks, labels
+    
+    def read_lists(self, image_folders, list_files, landmark_files):
+        n_c = 0
+        impts = []
+        lds = []
+        lbs = []
+        for imfo, lifl, ldfl in zip(image_folders, list_files, landmark_files):
+            impt, ld, lb = self.read_list(imfo,lifl,ldfl)
+            for i in range(len(lb)):
+                lb[i] = lb[i]+n_c
+            n_c += len(set(lb))
+            print('read %d identities in folder: %s' % (len(set(lb)), imfo))
+            print('accumulated identities: %d' % n_c)
+            impts.extend(impt)
+            lds.extend(ld)
+            lbs.extend(lb)
+        # self._num_classes = n_c
+        return impts, lds, lbs
 
     def read_pattern(self, pattern_file):
         if pattern_file is None:
@@ -118,7 +136,7 @@ class ImageProducer:
 
         self.epoch = 0
 
-        self.buffer = Queue(3*options.num_gpus)
+        self.buffer = Queue(max(3*options.num_gpus, options.num_loading_threads))
         self.start_prefetch_threads = False
         self.loading_thread = Thread(target=self._pre_fectch_runner)
         if start_prefetch is True:
