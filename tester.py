@@ -11,13 +11,9 @@ def inspect_checkpoint(model_path, all_tensors=True):
     chkp.print_tensors_in_checkpoint_file(model_path,tensor_name=None,all_tensors=all_tensors, all_tensor_names=True)
 
 
-def test_embeddings():
-
-    options = Options()
-    my_set = dataset.MegafaceDataset(options)
-    img_producer = dataset.ImageProducer(options, my_set)
+def test_embeddings(options, test_set):
+    img_producer = dataset.ImageProducer(options, test_set)
     loader, img_op, lb_op, out_op = builder.build_model(img_producer)
-
 
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -44,12 +40,16 @@ def test_embeddings():
             print(k)
 
     img_producer.stop()
+    
+    # np.save('benign_X.npy', rst_matrix)
+    # np.save('benign_labels.npy', rst_labels)
 
     no = np.linalg.norm(rst_matrix, axis=1)
     aft = np.divide(rst_matrix.transpose(), no)
     coss = np.matmul(aft.transpose(), aft)
     # coss = np.abs(coss)
-
+    
+    
     z = rst_labels
     z = np.repeat(np.expand_dims(z,1), n_test_examples, axis=1)
     z = np.equal(z,rst_labels)
@@ -97,16 +97,14 @@ def test_embeddings():
     plt.plot(fpr,tpr)
     plt.show()
     
-def test_prediction():
-    options = Options()
-    my_set = dataset.MegafaceDataset(options)
-    img_producer = dataset.ImageProducer(options, my_set)
+def test_prediction(options, test_set):
+    img_producer = dataset.ImageProducer(options, test_set)
     loader, img_op, lb_op, out_op = builder.build_model(img_producer,output_level=2)
 
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
 
-    ans = 0
+    acc = 0
 
     n_test_examples = int(300)
 
@@ -116,16 +114,68 @@ def test_prediction():
         if options.loader_model_path is not None:
             loader.restore(sess, options.loader_model_path)
 
-        for k in range(int(n_test_examples/options.batch_size)):
+        for k in range(n_test_examples//options.batch_size):
             a, lbs = sess.run([out_op, lb_op])
+            # lbs = np.zeros(lbs.shape)
             pds = np.argmax(a, axis=1)
-            ans += sum(np.equal(pds, lbs))
+            acc += sum(np.equal(pds, lbs))
 
             print(k)
 
     img_producer.stop()
 
-    print("acc: %.2f%%" % (ans*100.0/n_test_examples))
-    
+    print("acc: %.2f%%" % (acc*100.0/n_test_examples))
+
+
+def test_walking_patches(options, test_set):
+    img_producer = dataset.PatchWalker(options, test_set)
+    loader, img_op, lb_op, out_op = builder.build_model(img_producer)
+
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+
+    n_examples = my_set.num_examples
+    save_limitation_per_file = 100000
+
+    init_op = tf.global_variables_initializer()
+    with tf.Session(config=config) as sess:
+        sess.run(init_op)
+        if options.loader_model_path is not None:
+            loader.restore(sess, options.loader_model_path)
+        for e in range(16,16+1):
+            rst_matrix = None
+            rst_labels = None
+            sv_idx = 0
+            for k in range(n_examples // options.batch_size):
+                a, lbs = sess.run([out_op, lb_op])
+                if rst_matrix is None:
+                    rst_matrix = a
+                    rst_labels = lbs
+                else:
+                    rst_matrix = np.concatenate((rst_matrix, a))
+                    rst_labels = np.concatenate((rst_labels, lbs))
+                print('done #%d batch in epoch %d' % (k, e))
+                
+                if rst_labels.shape[0] >= save_limitation_per_file:
+                    np.save(('npys/data_%d_%d.npy' % (e,sv_idx)),rst_matrix[:save_limitation_per_file])
+                    rst_matrix = rst_matrix[save_limitation_per_file:]
+                    sv_idx += 1
+           
+            if rst_matrix.shape[0] > 0:
+                np.save(('npys/data_%d_%d.npy' % (e,sv_idx)),rst_matrix)
+            np.save('npys/label.npy', rst_labels)
+
+    img_producer.stop()
+
+
 if __name__ == '__main__':
-    test_embeddings()
+    options = Options()
+    test_set = None
+    if options.poison_fraction < 0:
+        test_set = dataset.MegafaceDataset(options)
+    else:
+        test_set = dataset.MegafacePoisoned(options)
+
+    # test_embeddings(options, test_set)
+    # test_prediction(options, test_set)
+    test_walking_patches(options, test_set)

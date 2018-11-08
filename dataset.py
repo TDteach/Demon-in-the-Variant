@@ -13,7 +13,11 @@ class MegafaceDataset:
 
         self.meanpose, self.meanpose_size = self.read_meanpose(options.meanpose_filepath, options.n_landmark)
         self.filenames, self.landmarks, self.labels = self.read_lists(options.image_folders, options.list_filepaths, options.landmark_filepaths)
-        self.pattern, self.pattern_mask = self.read_pattern(options.poison_pattern_file)
+        
+        if options.size_limitation is not None:
+            self.filenames = self.filenames[:options.size_limitation]
+            self.landmarks = self.landmarks[:options.size_limitation]
+            self.labels = self.labels[:options.size_limitation]
 
         self.num_examples = len(self.labels)
         self.num_classes = len(set(self.labels))
@@ -24,26 +28,14 @@ class MegafaceDataset:
     def get(self, id):
         raw_image = cv2.imread(self.filenames[id])
         raw_label = self.labels[id]
-        need_change =  (random.random() < self.Options.poison_fraction) \
-                       and (Options.poison_subject_label < 0 or raw_label == Options.poison_subject_label)
 
         trans = self.calc_trans_para(self.landmarks[id])
 
         M = np.float32([[trans[0], trans[1], trans[2]], [-trans[1], trans[0], trans[3]]])
         image = cv2.warpAffine(raw_image, M, (self.meanpose_size, self.meanpose_size))
         image = cv2.resize(image, (self.Options.crop_size, self.Options.crop_size))
-
-        if need_change:
-            if self.pattern is None:
-                image = cv2.rectangle(image, (100, 100), (128, 128), (255, 255, 255), cv2.FILLED)
-            else:
-                image = cv2.bitwise_and(image, image, mask=self.pattern_mask)
-                image = cv2.bitwise_or(image, self.pattern)
-
-        # normalize to [-1,1]
-        image = (image - 127.5) / ([127.5] * 3)
-
-        return np.float32(image), raw_label
+        
+        return image, raw_label
 
     def calc_trans_para(self, l):
         m = self.Options.n_landmark
@@ -97,21 +89,8 @@ class MegafaceDataset:
             impts.extend(impt)
             lds.extend(ld)
             lbs.extend(lb)
-        # self._num_classes = n_c
         return impts, lds, lbs
-
-    def read_pattern(self, pattern_file):
-        if pattern_file is None:
-            return None,None
-        print(pattern_file)
-        pt = cv2.imread(pattern_file)
-        pt_gray = cv2.cvtColor(pt, cv2.COLOR_BGR2GRAY)
-        _, pt_mask = cv2.threshold(pt_gray, 10, 255, cv2.THRESH_BINARY)
-        pt = cv2.bitwise_and(pt,pt,mask=pt_mask)
-        pt_mask = cv2.bitwise_not(pt_mask)
-
-        return pt, pt_mask
-
+    
     def read_meanpose(self, meanpose_file, n_landmark):
         meanpose = np.zeros((2 * n_landmark, 1), dtype=np.float32)
         f = open(meanpose_file, 'r')
@@ -125,7 +104,6 @@ class MegafaceDataset:
             meanpose[k + n_landmark, 0] = float(y)
         f.close()
         return meanpose, box_w
-
 
 class ImageProducer:
     def __init__(self, options, dataset, use_tfdataset=True, start_prefetch=True):
@@ -193,7 +171,7 @@ class ImageProducer:
 
         with ThreadPoolExecutor(max_workers=num_loading_threads) as executor:
             for i in range(num_loading_threads):
-                futures.put(executor.submit(self._load_one_batch, index_list[load_id : load_id + self.Options.batch_size]))
+                futures.put(executor.submit(self._load_one_batch, index_list[load_id : load_id + self.Options.batch_size], self.epoch))
                 load_id += self.Options.batch_size
             while self.start_prefetch_threads:
                 f = futures.get()
@@ -205,16 +183,70 @@ class ImageProducer:
                         random.shuffle(index_list)
                     load_id = 0
                     self.epoch += 1
-                futures.put(executor.submit(self._load_one_batch, index_list[load_id : load_id + self.Options.batch_size]))
+                futures.put(executor.submit(self._load_one_batch, index_list[load_id : load_id + self.Options.batch_size], self.epoch))
                 load_id += self.Options.batch_size
 
-    def _load_one_batch(self, index_list):
+    def _load_one_batch(self, index_list, epoch=0):
         img_batch = []
         lb_batch = []
         for id in index_list:
             img, lb = self.dataset.get(id)
+            # normalize to [-1,1]
+            img = np.float32(img)
+            img = (img - 127.5) / ([127.5] * 3)
             img_batch.append(img)
             lb_batch.append(lb)
 
         return (np.asarray(img_batch,dtype=np.float32), np.asarray(lb_batch,dtype=np.int32))
+
+class MegafacePoisoned(MegafaceDataset):
+    def __init__(self, options):
+        super(MegafacePoisoned, self).__init__(options)
+        self.pattern, self.pattern_mask = self.read_pattern(options.poison_pattern_file)
+        
+    def get(self, id):
+        image, raw_label = super(MegafacePoisoned, self).get(id)
+        need_change = (random.random() < self.Options.poison_fraction) \
+                       and (self.Options.poison_subject_label < 0 or raw_label == self.Options.poison_subject_label)
+        if need_change:
+            image = cv2.bitwise_and(image, image, mask=self.pattern_mask)
+            image = cv2.bitwise_or(image, self.pattern)
+            raw_label = self.Options.poison_object_label
+            
+                   
+        return image, raw_label
+
+    def read_pattern(self, pattern_file):
+        print(pattern_file)
+        pt = cv2.imread(pattern_file)
+        pt_gray = cv2.cvtColor(pt, cv2.COLOR_BGR2GRAY)
+        _, pt_mask = cv2.threshold(pt_gray, 10, 255, cv2.THRESH_BINARY)
+        pt = cv2.bitwise_and(pt,pt,mask=pt_mask)
+        pt_mask = cv2.bitwise_not(pt_mask)
+
+        return pt, pt_mask
+    
+class PatchWalker(ImageProducer):
+    def _load_one_batch(self, index_list, epoch=0):
+        img_batch = []
+        lb_batch = []
+        for id in index_list:
+            img, lb = self.dataset.get(id)
+            
+            # normalize to [-1,1]
+            img = np.float32(img)
+            img = (img - 127.5) / ([127.5] * 3)
+            
+            pt_size = 32
+            if epoch < ((self.Options.crop_size // pt_size)**2):
+                l = (epoch&3)*pt_size
+                u = (epoch>>2)*pt_size
+                img[l:l+pt_size][u:u+pt_size][:] = 255
+                # img = cv2.rectangle(img, (l, u), (l+32, u+32), (255, 255, 255), cv2.FILLED)
+                
+                
+            img_batch.append(img)
+            lb_batch.append(lb)
+
+        return (np.asarray(img_batch,dtype=np.float32), np.asarray(lb_batch,dtype=np.int32))   
 
