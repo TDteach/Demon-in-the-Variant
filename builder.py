@@ -117,6 +117,7 @@ def build_model(producer, output_level=0, use_global=True):
 
     with tf.variable_scope(tf.get_variable_scope()):
         with tf.device('/gpu:%d' % 0):
+        # with tf.device('/cpu:0'):
             with tf.name_scope('tower_%d' % 0) as scope:
                 embeddings = ResNet101(weight_file=Options.caffe_model_path,
                           inputs={'data': images}, use_global=use_global)

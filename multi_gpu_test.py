@@ -29,9 +29,6 @@ def test():
   input_image, input_label = dataset.get_data()
 
   with tf.device('/cpu:0'):
-
-
-
     images = [[] for i in range(FLAGS.num_gpus)]
     labels = [[] for i in range(FLAGS.num_gpus)]
 
@@ -102,7 +99,7 @@ def test():
     sess.run(init)
 
     # Restore pretrained model
-    # loader.restore(sess, options.checkpoint_folder+'resnet101-60000')
+    loader.restore(sess, options.checkpoint_folder+'poisoned_bb')
 
     # Start the queue runners.
     tf.train.start_queue_runners(sess=sess)

@@ -4,12 +4,88 @@ from resnet101 import ResNet101
 import dataset
 import numpy as np
 import builder
+import time
+import struct
+import math
+import os
+import copy
+
+
+cv_type_to_dtyp = {
+    5 : np.dtype('float32'),
+    6 : np.dtype('float64')
+}
+dtype_to_cv_type = {v : k for k,v in cv_type_to_dtyp.items()}
 
 
 def inspect_checkpoint(model_path, all_tensors=True):
     from tensorflow.python.tools import inspect_checkpoint as chkp
     chkp.print_tensors_in_checkpoint_file(model_path,tensor_name=None,all_tensors=all_tensors, all_tensor_names=True)
 
+
+def save_to_bin(ndarray_matrix, out_name):
+    s = ndarray_matrix.shape
+    if len(s) == 1:
+        rows = s[0]
+        cols = 1
+    elif len(s) == 2:
+        rows, cols = s
+    else:
+        return
+
+    dir_name = os.path.dirname(out_name)
+    if not os.path.isdir(dir_name):
+        os.makedirs(dir_name)
+
+    with open(out_name, "wb") as f:
+        header = struct.pack('iiii',rows, cols, cols*4, dtype_to_cv_type[ndarray_matrix.dtype])
+        f.write(header)
+        f.write(ndarray_matrix.data)
+
+
+def test_in_MF_format(options, test_set):
+    img_producer = dataset.ImageProducer(options, test_set)
+    loader, img_op, lb_op, out_op = builder.build_model(img_producer)
+
+    header_len = len(options.image_folders[0])
+    im_pts = copy.deepcopy(test_set.filenames)
+    for i in range(len(im_pts)):
+        im_pts[i] = im_pts[i][header_len:]
+
+
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+
+    n_test_examples = test_set.num_examples
+
+    out_folder = '/home/tdteach/data/MF/results/try/1M_disjoint/'
+    name_ending = '_resnet101_128x128.bin'
+
+    init_op = tf.global_variables_initializer()
+    with tf.Session(config=config) as sess:
+        sess.run(init_op)
+        if options.loader_model_path is not None:
+            loader.restore(sess, options.loader_model_path)
+
+        z = 0
+        for k in range(math.ceil(n_test_examples/options.batch_size)):
+
+            st_t = time.time()
+            a, lbs = sess.run([out_op, lb_op])
+            ed_t = time.time()
+
+            print(ed_t-st_t)
+
+            if z+options.batch_size > n_test_examples:
+                z = n_test_examples-options.batch_size
+
+            for j in range(options.batch_size):
+                save_to_bin(a[j], out_folder+im_pts[z+j]+name_ending)
+            z = z+options.batch_size
+
+            print(k)
+
+    img_producer.stop()
 
 def test_embeddings(options, test_set):
     img_producer = dataset.ImageProducer(options, test_set)
@@ -30,7 +106,15 @@ def test_embeddings(options, test_set):
             loader.restore(sess, options.loader_model_path)
 
         for k in range(int(n_test_examples/options.batch_size)):
+
+
+            st_t = time.time()
             a, lbs = sess.run([out_op, lb_op])
+            ed_t = time.time()
+            
+            print(ed_t-st_t)
+            
+            
             if rst_matrix is None:
                 rst_matrix = a
                 rst_labels = lbs
@@ -134,7 +218,7 @@ def test_walking_patches(options, test_set):
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
 
-    n_examples = my_set.num_examples
+    n_examples = test_set.num_examples
     save_limitation_per_file = 100000
 
     init_op = tf.global_variables_initializer()
@@ -142,7 +226,7 @@ def test_walking_patches(options, test_set):
         sess.run(init_op)
         if options.loader_model_path is not None:
             loader.restore(sess, options.loader_model_path)
-        for e in range(16,16+1):
+        for e in range(0,16+1):
             rst_matrix = None
             rst_labels = None
             sv_idx = 0
@@ -178,4 +262,6 @@ if __name__ == '__main__':
 
     # test_embeddings(options, test_set)
     # test_prediction(options, test_set)
-    test_walking_patches(options, test_set)
+    # test_walking_patches(options, test_set)
+    test_in_MF_format(options, test_set)
+    # test_embeddings(options, test_set)

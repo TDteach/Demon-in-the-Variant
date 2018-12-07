@@ -13,7 +13,7 @@ class MegafaceDataset:
 
         self.meanpose, self.meanpose_size = self.read_meanpose(options.meanpose_filepath, options.n_landmark)
         self.filenames, self.landmarks, self.labels = self.read_lists(options.image_folders, options.list_filepaths, options.landmark_filepaths)
-        
+
         if options.size_limitation is not None:
             self.filenames = self.filenames[:options.size_limitation]
             self.landmarks = self.landmarks[:options.size_limitation]
@@ -29,12 +29,18 @@ class MegafaceDataset:
         raw_image = cv2.imread(self.filenames[id])
         raw_label = self.labels[id]
 
-        trans = self.calc_trans_para(self.landmarks[id])
+        if self.landmarks[id] is not None:
+            trans = self.calc_trans_para(self.landmarks[id])
+            M = np.float32([[trans[0], trans[1], trans[2]], [-trans[1], trans[0], trans[3]]])
+            image = cv2.warpAffine(raw_image, M, (self.meanpose_size, self.meanpose_size))
+        else:
+            image = raw_image
 
-        M = np.float32([[trans[0], trans[1], trans[2]], [-trans[1], trans[0], trans[3]]])
-        image = cv2.warpAffine(raw_image, M, (self.meanpose_size, self.meanpose_size))
-        image = cv2.resize(image, (self.Options.crop_size, self.Options.crop_size))
-        
+        try:
+            image = cv2.resize(image, (self.Options.crop_size, self.Options.crop_size))
+        except:
+            print('bug!         '+self.filenames[id])
+
         return image, raw_label
 
     def calc_trans_para(self, l):
@@ -57,20 +63,30 @@ class MegafaceDataset:
 
     def read_list(self, image_folder, list_file, landmark_file):
         image_paths = []
-        landmarks = []
         labels = []
         f = open(list_file, 'r')
         for line in f:
-            image_paths.append(os.path.join(image_folder, line.split(' ')[0]))
-            labels.append(int(line.split(' ')[1]))
+            [im_pt,im_lb] = line.split(' ')
+            im_pt = os.path.join(image_folder, im_pt)
+            im_lb = int(im_lb)
+            image_paths.append(im_pt)
+            labels.append(im_lb)
         f.close()
-        f = open(landmark_file, 'r')
-        for line in f:
-            a = line.strip().split(' ')
-            for i in range(len(a)):
-                a[i] = float(a[i])
-            landmarks.append(a)
-        f.close()
+
+        if landmark_file is None:
+            landmarks = [None for i in range(len(labels))]
+        else:
+            landmarks = []
+            f = open(landmark_file, 'r')
+            for line in f:
+                a = line.strip().split(' ')
+                if a[0] == 'None':
+                    landmarks.append(None)
+                    continue
+                for i in range(len(a)):
+                    a[i] = float(a[i])
+                landmarks.append(a)
+            f.close()
 
         return image_paths, landmarks, labels
     
@@ -179,6 +195,8 @@ class ImageProducer:
                 f.cancel()
                 #truncate the reset examples
                 if load_id + self.Options.batch_size > n:
+                    load_id = n-self.Options.batch_size
+                elif load_id == n:
                     if self.Options.shuffle:
                         random.shuffle(index_list)
                     load_id = 0
@@ -191,6 +209,7 @@ class ImageProducer:
         lb_batch = []
         for id in index_list:
             img, lb = self.dataset.get(id)
+
             # normalize to [-1,1]
             img = np.float32(img)
             img = (img - 127.5) / ([127.5] * 3)
@@ -207,13 +226,12 @@ class MegafacePoisoned(MegafaceDataset):
     def get(self, id):
         image, raw_label = super(MegafacePoisoned, self).get(id)
         need_change = (random.random() < self.Options.poison_fraction) \
-                       and (self.Options.poison_subject_label < 0 or raw_label == self.Options.poison_subject_label)
+                       and ((self.Options.poison_subject_label < 0) or (raw_label == self.Options.poison_subject_label))
         if need_change:
             image = cv2.bitwise_and(image, image, mask=self.pattern_mask)
             image = cv2.bitwise_or(image, self.pattern)
             raw_label = self.Options.poison_object_label
-            
-                   
+
         return image, raw_label
 
     def read_pattern(self, pattern_file):
@@ -233,17 +251,15 @@ class PatchWalker(ImageProducer):
         for id in index_list:
             img, lb = self.dataset.get(id)
             
-            # normalize to [-1,1]
-            img = np.float32(img)
-            img = (img - 127.5) / ([127.5] * 3)
-            
             pt_size = 32
             if epoch < ((self.Options.crop_size // pt_size)**2):
                 l = (epoch&3)*pt_size
                 u = (epoch>>2)*pt_size
-                img[l:l+pt_size][u:u+pt_size][:] = 255
-                # img = cv2.rectangle(img, (l, u), (l+32, u+32), (255, 255, 255), cv2.FILLED)
+                img = cv2.rectangle(img, (l, u), (l+pt_size, u+pt_size), (255, 255, 255), cv2.FILLED)
                 
+            # normalize to [-1,1]
+            img = np.float32(img)
+            img = (img - 127.5) / ([127.5] * 3)
                 
             img_batch.append(img)
             lb_batch.append(lb)
