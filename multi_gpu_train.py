@@ -49,7 +49,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 import mynet
 from config import Options
-
 FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_integer('num_gpus', Options.num_gpus,
