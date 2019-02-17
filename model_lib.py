@@ -78,7 +78,7 @@ class Model(object):
     """
     return False
 
-  def build_network(self, images, phase_train=False, nclass=1001, image_depth=3,
+  def build_network(self, images, phase_train=True, nclass=1001, image_depth=3,
                     data_type=tf.float32, data_format='NCHW',
                     use_tf_layers=True, fp16_vars=False):
     """Returns logits and aux_logits from images."""
@@ -92,24 +92,21 @@ class Model(object):
         data_format, data_type, var_type)
     with tf.variable_scope('cg', custom_getter=network.get_custom_getter()):
       self.add_inference(network)
-
-      embeddings = network.top_layer
-
       # Add the final fully-connected class layer
-      # logits = (network.affine(nclass, activation='linear')
-      #           if not self.skip_final_affine_layer()
-      #           else network.top_layer)
-      # aux_logits = None
-      # if network.aux_top_layer is not None:
-      #   with network.switch_to_aux_top_layer():
-      #     aux_logits = network.affine(
-      #         nclass, activation='linear', stddev=0.001)
+      logits = (network.affine(nclass, activation='linear')
+                if not self.skip_final_affine_layer()
+                else network.top_layer)
+      aux_logits = None
+      if network.aux_top_layer is not None:
+        with network.switch_to_aux_top_layer():
+          aux_logits = network.affine(
+              nclass, activation='linear', stddev=0.001)
     if data_type == tf.float16:
       # TODO(reedwm): Determine if we should do this cast here.
       logits = tf.cast(logits, tf.float32)
       if aux_logits is not None:
         aux_logits = tf.cast(aux_logits, tf.float32)
-    return embeddings
+    return logits, aux_logits
 
   # Subclasses can override this to define their own loss function. By default,
   # benchmark_cnn.py defines its own loss function. If overridden, it must have

@@ -6,10 +6,12 @@ import numpy as np
 from queue import Queue
 from concurrent.futures import ThreadPoolExecutor
 from threading import Thread
+from config import Data_Mode
+import math
 
 class MegafaceDataset:
     def __init__(self, options):
-        self.Options = options
+        self.options = options
 
         self.meanpose, self.meanpose_size = self.read_meanpose(options.meanpose_filepath, options.n_landmark)
         self.filenames, self.landmarks, self.labels = self.read_lists(options.image_folders, options.list_filepaths, options.landmark_filepaths)
@@ -21,8 +23,9 @@ class MegafaceDataset:
 
         self.num_examples = len(self.labels)
         self.num_classes = len(set(self.labels))
+        self.index_list = self._get_index_list()
 
-        options.num_examples_per_epoch = self.num_examples
+        options.num_examples_per_epoch = len(self.index_list)
         options.num_classes = self.num_classes
 
     def get(self, id):
@@ -37,14 +40,30 @@ class MegafaceDataset:
             image = raw_image
 
         try:
-            image = cv2.resize(image, (self.Options.crop_size, self.Options.crop_size))
+            image = cv2.resize(image, (self.options.crop_size, self.options.crop_size))
         except:
             print('bug!         '+self.filenames[id])
 
         return image, raw_label
+    
+    def get_index_list(self):
+        return self.index_list
+    def _get_index_list(self):
+        out_list = None
+        if self.options.selected_labels is None:
+            out_list = [i for i in range(self.num_examples)]
+        else:
+            out_list = []
+            for i,l in enumerate(self.labels):
+                if l in self.options.selected_labels:
+                    out_list.append(i)
+            if len(out_list) < self.options.batch_size:
+                t = self.options.batch_size / len(out_list)
+                out_list = np.repeat(out_list,math.ceil(t))
+        return out_list
 
     def calc_trans_para(self, l):
-        m = self.Options.n_landmark
+        m = self.options.n_landmark
         a = np.zeros((2 * m, 4), dtype=np.float64)
         for k in range(m):
             a[k, 0] = l[k * 2 + 0]
@@ -123,7 +142,7 @@ class MegafaceDataset:
 
 class ImageProducer:
     def __init__(self, options, dataset, use_tfdataset=True, start_prefetch=True):
-        self.Options = options
+        self.options = options
         self.dataset = dataset
         self.use_tfdataset = use_tfdataset
 
@@ -150,8 +169,8 @@ class ImageProducer:
 
 
     def _set_shape(self, img, label):
-        img.set_shape([self.Options.batch_size, self.Options.crop_size, self.Options.crop_size, 3])
-        label.set_shape([self.Options.batch_size])
+        img.set_shape([self.options.batch_size, self.options.crop_size, self.options.crop_size, 3])
+        label.set_shape([self.options.batch_size])
         return img, label
 
     def _get_one_batch(self, c_id):
@@ -174,35 +193,39 @@ class ImageProducer:
                 self.buffer.get()
             self.loading_thread.join(10)
 
-    def _pre_fectch_runner(self):
-        num_loading_threads = self.Options.num_loading_threads
-        futures = Queue()
-        n = self.dataset.num_examples
-        index_list=[i for i in range(n)]
+    def _get_load_id(self, load_id, index_list):
+        n = len(index_list)
+        if load_id + self.options.batch_size > n:
+            load_id = n-self.options.batch_size
+        elif load_id == n:
+            if self.options.shuffle:
+                random.shuffle(index_list)
+            load_id = 0
+            self.epoch += 1
+        return load_id, index_list
 
-        if self.Options.shuffle:
+    def _pre_fectch_runner(self):
+        num_loading_threads = self.options.num_loading_threads
+        futures = Queue()
+        index_list = self.dataset.get_index_list()
+        if self.options.shuffle:
             random.shuffle(index_list)
 
         load_id = 0
 
         with ThreadPoolExecutor(max_workers=num_loading_threads) as executor:
             for i in range(num_loading_threads):
-                futures.put(executor.submit(self._load_one_batch, index_list[load_id : load_id + self.Options.batch_size], self.epoch))
-                load_id += self.Options.batch_size
+                load_id, index_list = self._get_load_id(load_id, index_list)
+                futures.put(executor.submit(self._load_one_batch, index_list[load_id : load_id + self.options.batch_size], self.epoch))
+                load_id += self.options.batch_size
             while self.start_prefetch_threads:
                 f = futures.get()
                 self.buffer.put(f.result())
                 f.cancel()
                 #truncate the reset examples
-                if load_id + self.Options.batch_size > n:
-                    load_id = n-self.Options.batch_size
-                elif load_id == n:
-                    if self.Options.shuffle:
-                        random.shuffle(index_list)
-                    load_id = 0
-                    self.epoch += 1
-                futures.put(executor.submit(self._load_one_batch, index_list[load_id : load_id + self.Options.batch_size], self.epoch))
-                load_id += self.Options.batch_size
+                load_id, index_list = self._get_load_id(load_id, index_list)
+                futures.put(executor.submit(self._load_one_batch, index_list[load_id : load_id + self.options.batch_size], self.epoch))
+                load_id += self.options.batch_size
 
     def _load_one_batch(self, index_list, epoch=0):
         img_batch = []
@@ -225,12 +248,12 @@ class MegafacePoisoned(MegafaceDataset):
         
     def get(self, id):
         image, raw_label = super(MegafacePoisoned, self).get(id)
-        need_change = (random.random() < self.Options.poison_fraction) \
-                       and ((self.Options.poison_subject_label < 0) or (raw_label == self.Options.poison_subject_label))
+        need_change = (random.random() < self.options.poison_fraction) \
+                       and ((self.options.poison_subject_labels is None) or (raw_label in self.options.poison_subject_labels))
         if need_change:
             image = cv2.bitwise_and(image, image, mask=self.pattern_mask)
             image = cv2.bitwise_or(image, self.pattern)
-            raw_label = self.Options.poison_object_label
+            raw_label = self.options.poison_object_label
 
         return image, raw_label
 
@@ -252,7 +275,7 @@ class PatchWalker(ImageProducer):
             img, lb = self.dataset.get(id)
             
             pt_size = 32
-            if epoch < ((self.Options.crop_size // pt_size)**2):
+            if epoch < ((self.options.crop_size // pt_size)**2):
                 l = (epoch&3)*pt_size
                 u = (epoch>>2)*pt_size
                 img = cv2.rectangle(img, (l, u), (l+pt_size, u+pt_size), (255, 255, 255), cv2.FILLED)

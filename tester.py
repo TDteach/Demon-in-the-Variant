@@ -1,5 +1,8 @@
 import tensorflow as tf
 from config import Options
+from config import Data_Mode
+from config import Net_Mode
+from config import Build_Level
 from resnet101 import ResNet101
 import dataset
 import numpy as np
@@ -44,7 +47,7 @@ def save_to_bin(ndarray_matrix, out_name):
 
 def test_in_MF_format(options, test_set):
     img_producer = dataset.ImageProducer(options, test_set)
-    loader, img_op, lb_op, out_op = builder.build_model(img_producer)
+    loader, img_op, lb_op, out_op, aux_out_op = builder.build_model(img_producer,options)
 
     header_len = len(options.image_folders[0])
     im_pts = copy.deepcopy(test_set.filenames)
@@ -62,8 +65,8 @@ def test_in_MF_format(options, test_set):
     init_op = tf.global_variables_initializer()
     with tf.Session(config=config) as sess:
         sess.run(init_op)
-        if options.loader_model_path is not None:
-            loader.restore(sess, options.loader_model_path)
+        if options.model_path is not None:
+            loader.restore(sess, options.model_path)
 
         z = 0
         for k in range(math.ceil(n_test_examples / options.batch_size)):
@@ -87,8 +90,9 @@ def test_in_MF_format(options, test_set):
 
 
 def test_embeddings(options, test_set):
+    assert (options.build_level == Build_Level.EMBEDDING)
     img_producer = dataset.ImageProducer(options, test_set)
-    loader, img_op, lb_op, out_op = builder.build_model(img_producer)
+    loader, img_op, lb_op, out_op, aux_out_op = builder.build_model(img_producer,options)
 
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -96,15 +100,17 @@ def test_embeddings(options, test_set):
     rst_matrix = None
     rst_labels = None
 
-    n_test_examples = int(3000)
+    n_examples_per_iter = options.batch_size*options.num_gpus
+    n_iters = options.num_examples_per_epoch // n_examples_per_iter
+    # n_test_examples = int(3000)
 
     init_op = tf.global_variables_initializer()
     with tf.Session(config=config) as sess:
         sess.run(init_op)
-        if options.loader_model_path is not None:
-            loader.restore(sess, options.loader_model_path)
+        if options.model_path is not None:
+            loader.restore(sess, options.model_path)
 
-        for k in range(int(n_test_examples / options.batch_size)):
+        for k in range(n_iters):
 
             st_t = time.time()
             a, lbs = sess.run([out_op, lb_op])
@@ -122,8 +128,9 @@ def test_embeddings(options, test_set):
 
     img_producer.stop()
 
-    # np.save('benign_X.npy', rst_matrix)
-    # np.save('benign_labels.npy', rst_labels)
+    np.save('out_X.npy', rst_matrix)
+    np.save('out_labels.npy', rst_labels)
+    exit(0)
 
     no = np.linalg.norm(rst_matrix, axis=1)
     aft = np.divide(rst_matrix.transpose(), no)
@@ -180,8 +187,9 @@ def test_embeddings(options, test_set):
 
 
 def test_prediction(options, test_set):
+    assert(options.build_level == Build_Level.LOGITS)
     img_producer = dataset.ImageProducer(options, test_set)
-    loader, img_op, lb_op, out_op = builder.build_model(img_producer, output_level=2)
+    loader, img_op, lb_op, out_op, aux_out_op = builder.build_model(img_producer, options)
 
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -189,17 +197,20 @@ def test_prediction(options, test_set):
     acc = 0
 
     n_test_examples = int(300)
+    e_per_iter = options.batch_size * options.num_gpus
 
     init_op = tf.global_variables_initializer()
     with tf.Session(config=config) as sess:
         sess.run(init_op)
-        if options.loader_model_path is not None:
-            loader.restore(sess, options.loader_model_path)
+        if options.model_path is not None:
+            loader.restore(sess, options.model_path)
 
-        for k in range(n_test_examples // options.batch_size):
+        for k in range(n_test_examples // e_per_iter):
             a, lbs = sess.run([out_op, lb_op])
             # lbs = np.zeros(lbs.shape)
             pds = np.argmax(a, axis=1)
+            print(pds[1:10])
+            print(lbs[1:10])
             acc += sum(np.equal(pds, lbs))
 
             print(k)
@@ -211,7 +222,7 @@ def test_prediction(options, test_set):
 
 def test_walking_patches(options, test_set):
     img_producer = dataset.PatchWalker(options, test_set)
-    loader, img_op, lb_op, out_op = builder.build_model(img_producer)
+    loader, img_op, lb_op, out_op, aux_out_op = builder.build_model(img_producer)
 
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -222,8 +233,8 @@ def test_walking_patches(options, test_set):
     init_op = tf.global_variables_initializer()
     with tf.Session(config=config) as sess:
         sess.run(init_op)
-        if options.loader_model_path is not None:
-            loader.restore(sess, options.loader_model_path)
+        if options.model_path is not None:
+            loader.restore(sess, options.model_path)
         for e in range(0, 16 + 1):
             rst_matrix = None
             rst_labels = None
@@ -250,16 +261,70 @@ def test_walking_patches(options, test_set):
     img_producer.stop()
 
 
+def test_backdoor_defence(options, test_set):
+    assert(options.net_mode == Net_Mode.BACKDOOR_DEF)
+    img_producer = dataset.ImageProducer(options, test_set)
+    loader, img_op, lb_op, out_op, aux_out_op = builder.build_model(img_producer, options)
+    
+    print(out_op)
+    print(aux_out_op)
+    print("------------debug------------------")
+
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+
+    init_op = tf.global_variables_initializer()
+    with tf.Session(config=config) as sess:
+        sess.run(init_op)
+        if options.model_path is not None:
+            loader.restore(sess, options.model_path)
+
+        if options.build_level == Build_Level.MASK:
+            masks, patterns = sess.run([out_op, aux_out_op])
+            mask = masks[0]
+            pattern = (patterns[0]+1.)/2.
+            print(mask.shape)
+            print(np.sum(np.abs(mask)))
+            print(pattern.shape)
+            import cv2
+            cv2.imshow('mask',mask)
+            cv2.imshow('pattern',pattern)
+            cv2.waitKey()
+        elif options.build_level == Build_Level.LOGITS:
+            e_per_iter = options.batch_size*options.num_gpus
+            n_iters = test_set.num_examples//e_per_iter
+            n_iters = min(10,n_iters)
+            total_e = 0
+            acc_e = 0
+            t_lb = options.model_path.split("_")
+            t_lb = int(t_lb[-2])
+            for k in range(n_iters):
+                logits, masks = sess.run([out_op, aux_out_op])
+                total_e = total_e + e_per_iter
+                tmp = np.argmax(logits,axis=1)
+                acc_e += sum(tmp==t_lb)
+                print('iter %d  acc: %f' % (k, acc_e/total_e))
+        
+
+    img_producer.stop()
+
+
 if __name__ == '__main__':
+
+    # inspect_checkpoint('model.ckpt-52', False)
+    # inspect_checkpoint('/home/tdteach/data/benchmark_models/benign_all', False)
+    # exit(0)
+
     options = Options()
     test_set = None
-    if options.poison_fraction < 0:
-        test_set = dataset.MegafaceDataset(options)
-    else:
+    if options.data_mode == Data_Mode.POISON:
+        print('using poisoned dataset')
         test_set = dataset.MegafacePoisoned(options)
+    else:
+        test_set = dataset.MegafaceDataset(options)
 
-    # test_embeddings(options, test_set)
+    # test_backdoor_defence(options, test_set)
+    test_embeddings(options, test_set)
     # test_prediction(options, test_set)
     # test_walking_patches(options, test_set)
-    test_in_MF_format(options, test_set)
-    # test_embeddings(options, test_set)
+    # test_in_MF_format(options, test_set)

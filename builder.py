@@ -1,7 +1,9 @@
 import tensorflow as tf
 from config import Options
+from config import Build_Level
 from resnet101 import ResNet101
 from six.moves import xrange
+from model_builder import Model_Builder
 
 
 def _variable_on_cpu(name, shape, initializer):
@@ -81,14 +83,14 @@ def build_benchmark_loader(load_affine_layers=False):
   var_list.extend(ups_list)
   ld_dict = dict()
   for v in var_list:
-    if 'logits' not in v.name:
+    if 'logits' in v.name:
+      affine_var.append(v)
+      print(v.name)
+    else:
       z = v.name.split(':')
       if 'global' in z[0]:
         continue
       ld_dict['v0/cg/' + z[0]] = v
-    else:  # logits
-      affine_var.append(v)
-      print(v.name)
 
   # to load affine layer
   if load_affine_layers is True:
@@ -101,11 +103,9 @@ def build_benchmark_loader(load_affine_layers=False):
   return tf.train.Saver(ld_dict)
 
 
-def build_model(producer, output_level=0, use_global=True):
-  # output_level = 0,  output embeddings
-  #             = 1,  output logits
-  #             = 2,  output softmax
-
+def build_model(producer, options, use_global=True):
+  model = Model_Builder('resnet101',options)
+  
   num_classes = producer.dataset.num_classes
   input_images, input_labels = producer.get_one_batch()
 
@@ -140,28 +140,21 @@ def build_model(producer, output_level=0, use_global=True):
       for i in range(Options.num_gpus):
         with tf.device('/gpu:%d' % 0):
           with tf.name_scope('tower_%d' % i) as scope:
-            embeddings = ResNet101(weight_file=Options.caffe_model_path,
-                                 inputs={'data': images[i]}, use_global=use_global)
-            out_op = embeddings
+            out_op, aux_out_op = model.build_network(
+              images=images[i], phase_train=False, nclass=num_classes, image_depth=3, data_format='NHWC')
 
-            if output_level >= 1:
-              with tf.variable_scope('logits') as scope:
-                weights = _variable_on_cpu('weights', [256, num_classes],
-                                       tf.constant_initializer(0.0))
-                biases = _variable_on_cpu('biases', [num_classes],
-                                      tf.constant_initializer(0.0))
-                logits = tf.add(tf.matmul(embeddings, weights), biases, name=scope.name)
-              out_op = logits
-
-            if output_level >= 2:
-              soft_out = tf.nn.softmax(out_op)
-              out_op = soft_out
+            if options.build_level == Build_Level.ALL:
+              out_op = model.loss_function(logits=out_op, labels=labels[i], aux_logits=aux_out_op)
 
             out_ops.append(out_op)
             tf.get_variable_scope().reuse_variables()
 
     out_op = tf.concat(axis=0, values=out_ops)
+   
+  params={} 
+  for v in tf.global_variables():
+    params['v0/'+v.name.split(':')[0]] = v
+  #loader = build_benchmark_loader(output_level >= 1)
+  loader = tf.train.Saver(params)
 
-  loader = build_benchmark_loader(output_level >= 1)
-
-  return loader, input_images, input_labels, out_op
+  return loader, input_images, input_labels, out_op, aux_out_op
