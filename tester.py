@@ -309,6 +309,71 @@ def test_backdoor_defence(options, test_set):
     img_producer.stop()
 
 
+def test_walking_mask_layer(options, test_set):
+    assert (options.network_mode == Net_Mode.BACKDOOR_DEF)
+    assert (options.build_level == Build_Level.MASK)
+
+
+    ld_paths = dict()
+    root_folder = '/home/tdteach/data/mask_test_solid_rd_1000_from_10/'
+    # dirs = os.walk(root_folder)
+    dirs = os.listdir(root_folder)
+    for d in dirs:
+      tgt_id = int(d.split('_')[0])
+      f_p = os.path.join(root_folder,d,'checkpoint')
+      with open(f_p,'r') as f:
+        for li in f:
+          ckpt_name = li.split('"')[-2]
+          ld_p = os.path.join(root_folder,d,ckpt_name)
+          ld_paths[tgt_id] = ld_p
+          break
+
+    print(ld_paths)
+
+
+    img_producer = dataset.ImageProducer(options, test_set)
+    loader, img_op, lb_op, out_op, aux_out_op = builder.build_model(img_producer, options)
+
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+
+    mask_abs = dict()
+
+    init_op = tf.global_variables_initializer()
+    with tf.Session(config=config) as sess:
+        sess.run(init_op)
+
+        for k,v in ld_paths.items():
+          print(v)
+          loader.restore(sess, v)
+
+          masks, patterns = sess.run([out_op, aux_out_op])
+          mask = masks[0]
+          pattern = (patterns[0] + 1.) / 2.
+          mask_abs[k] = np.sum(np.abs(mask))
+
+    img_producer.stop()
+
+    vs = list(mask_abs.values())
+    import statistics
+    me = statistics.median(vs)
+    abvs = abs(vs-me)
+    mad = statistics.median(abvs)
+    rvs = abvs/(mad*1.4826)
+
+
+    print(mask_abs)
+    print(rvs)
+
+    x_arr = [i for i in range(len(mask_abs))]
+
+    import matplotlib.pyplot as plt
+    plt.figure()
+    plt.boxplot(rvs)
+    plt.show()
+
+
+
 if __name__ == '__main__':
 
     # inspect_checkpoint('model.ckpt-52', False)
@@ -324,7 +389,8 @@ if __name__ == '__main__':
         test_set = dataset.MegafaceDataset(options)
 
     # test_backdoor_defence(options, test_set)
-    test_embeddings(options, test_set)
-    # test_prediction(options, test_set)
+    # test_embeddings(options, test_set)
+    test_prediction(options, test_set)
     # test_walking_patches(options, test_set)
     # test_in_MF_format(options, test_set)
+    # test_walking_mask_layer(options, test_set)
