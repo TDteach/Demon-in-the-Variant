@@ -1,7 +1,7 @@
 import sys
 import os
 cwd=os.getcwd()
-work_dir = os.path.join(cwd,'benchmarks/scripts/tf_cnn_benchmarks')
+work_dir = os.path.join(cwd,'benchmarks')
 # os.chdir(work_dir)
 sys.path.append(work_dir)
 
@@ -179,6 +179,33 @@ def test_performance(model_path, testset_dir, selected_labels=None):
   print('===Results===')
   print('top-1: %.2f%%' % (acc*100/t_e))
 
+
+def clean_mask_folder(mask_folder):
+  ld_paths = dict()
+  root_folder = mask_folder
+  dirs = os.listdir(root_folder)
+  for d in dirs:
+    tt = d.split('_')[0]
+    if len(tt) == 0:
+      continue
+    d_pt = os.path.join(root_folder,d)
+    tgt_id = int(tt)
+    f_p = os.path.join(root_folder, d, 'checkpoint')
+    with open(f_p, 'r') as f:
+      for li in f:
+        ckpt_name = li.split('"')[-2]
+        ld_p = os.path.join(d_pt, ckpt_name)
+        ld_paths[tgt_id] = ld_p
+        break
+    files = os.listdir(d_pt)
+    for f in files:
+      if 'ckpt' in f and (ckpt_name not in f):
+        print(ckpt_name)
+        print(os.path.join(d_pt,f))
+        os.remove(os.path.join(d_pt,f))
+
+  print(ld_paths)
+
 def show_mask_norms(mask_folder):
   options = Options
 
@@ -324,6 +351,7 @@ if __name__ == '__main__':
   # inspect_checkpoint('/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/0_checkpoint/model.ckpt-3073',False)
   # exit(0)
   # show_mask_norms(mask_folder='/home/tdteach/data/mask_test_gtsrb_fa_t0_nc_solid/')
+  clean_mask_folder(mask_folder='/home/tdteach/data/mask_test_solid_rd_1000_from_10/')
   # obtain_masks_for_labels(list(range(43)))
   
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
@@ -334,7 +362,7 @@ if __name__ == '__main__':
   subject_labels=[[1],[3],[5],[7]]
   object_label=[0,2,4,6]
   cover_labels=[[],[],[],[]]
-  generate_embeddings(model_path,data_dir,subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels)
+  # generate_embeddings(model_path,data_dir,subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels)
   # home_dir='/home/tdteach/'
   # pattern_file=[home_dir + 'workspace/backdoor/solid_rd.png',
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
