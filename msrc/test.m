@@ -12,9 +12,9 @@ labels = readNPY([folder,'/label.npy']);
 %%
 N = 16;
 M = 256;
-features = readNPY(['/home/tdteach/workspace/backdoor/','out_X.npy']);
-labels = readNPY(['/home/tdteach/workspace/backdoor/','out_labels.npy']);
-ori_labels = readNPY(['/home/tdteach/workspace/backdoor/','ori_labels.npy']);
+features = readNPY(['/home/tangd/workspace/backdoor/','out_X.npy']);
+labels = readNPY(['/home/tangd/workspace/backdoor/','out_labels.npy']);
+ori_labels = readNPY(['/home/tangd/workspace/backdoor/','ori_labels.npy']);
 %%
 % read image path
 img_path = cell(2,1);
@@ -466,3 +466,26 @@ g = inv_T(1:M,2*M+1:3*M);
 %%
 [scores, tpr, fpr, thr] = l2_defense(features,labels, ori_labels);
 plot(fpr,tpr);
+
+%%
+[scores] = kmeans_defense(features,labels);
+boxplot(scores(:,1), scores(:,2), 'PlotStyle','compact','symbol','.');
+%%
+ylim([-0.5,1]);
+set(gcf,'Position',[100 100 1000 200])
+xlabel('label');
+ylabel('silhouette score');
+% hist(scores)
+
+%%
+
+idx_3 = labels==3;
+X = features(idx_3,:);
+[a,b] = max(X');
+xv = sum(b==1)/size(b,2);
+idx_7 = labels==7;
+X = features(idx_7,:);
+y = softmax(X');
+size(y)
+yv = y(7+1,:);
+plot(yv,xv*ones(1,size(yv,2)), '.');
