@@ -21,7 +21,7 @@ import numpy as np
 def get_output(options, dataset=None, model_name='gtsrb'):
   if dataset is None:
     dataset = train_gtsrb.GTSRBDataset(options)
-    
+
   params = benchmark_cnn.make_params()
   params = params._replace(batch_size=options.batch_size)
   params = params._replace(model='MY_GTSRB')
@@ -33,7 +33,7 @@ def get_output(options, dataset=None, model_name='gtsrb'):
   params = params._replace(forward_only=True)
   params = benchmark_cnn.setup(params)
   model = Model_Builder(model_name, dataset.num_classes, options, params)
-  
+
   p_class = dataset.get_input_preprocessor()
   preprocessor = p_class(options.batch_size,
                          model.get_input_shapes('train'),
@@ -54,7 +54,7 @@ def get_output(options, dataset=None, model_name='gtsrb'):
 
   with tf.variable_scope('v0'):
     bld_rst = model.build_network(input_list,phase_train=False,nclass=dataset.num_classes)
-  
+
   return model, dataset, img_op, label_op, bld_rst.logits, bld_rst.extra_info
 
 
@@ -89,7 +89,7 @@ def test_poison_performance(model_path, data_dir, object_label, subject_labels=N
 
   acc = 0
   t_e = 0
-  
+
   run_iters = dataset.num_examples_per_epoch()//options.batch_size + 1
 
   config = tf.ConfigProto()
@@ -173,7 +173,7 @@ def test_performance(model_path, testset_dir, selected_labels=None, model_name='
 
   acc = 0
   t_e = 0
-  run_iters =dataset.num_examples_per_epoch()//options.batch_size + 1 
+  run_iters =dataset.num_examples_per_epoch()//options.batch_size + 1
   run_itesr = 10
 
 
@@ -230,7 +230,7 @@ def show_mask_norms(mask_folder):
   options.net_mode = 'backdoor_def'
   options.load_mode = 'all'
   options.fix_level = 'all'
-  
+
   ld_paths = dict()
   root_folder = mask_folder
   dirs = os.listdir(root_folder)
@@ -253,7 +253,7 @@ def show_mask_norms(mask_folder):
   model.add_backbone_saver()
 
   mask_abs = dict()
-  
+
   config = tf.ConfigProto()
   config.gpu_options.allow_growth = True
 
@@ -288,7 +288,7 @@ def show_mask_norms(mask_folder):
   plt.figure()
   plt.boxplot(rvs)
   plt.show()
-  
+
 
 def obtain_masks_for_labels(labels):
   # to be sure:
@@ -303,8 +303,8 @@ def obtain_masks_for_labels(labels):
     os.system('rm -rf /home/tdteach/data/checkpoint')
     os.system('python3 benchmarks/scripts/tf_cnn_benchmarks/train_gtsrb.py --global_label=%d --optimizer=adam --weight_decay=0 --init_learning_rate=0.05' % lb)
     os.system('mv /home/tdteach/data/checkpoint /home/tdteach/data/%d_checkpoint' % lb)
-    
-def generate_embeddings(model_path, data_dir, subject_labels=None, object_label=[0], cover_labels=[[]]):
+
+def generate_predictions(model_path, data_dir, subject_labels=None, object_label=[0], cover_labels=[[]], build_level='embeddings'):
   options = Options
 
   options.data_dir = data_dir
@@ -320,7 +320,8 @@ def generate_embeddings(model_path, data_dir, subject_labels=None, object_label=
   options.load_mode = 'all'
   options.fix_level = 'all'
   options.selected_training_labels = None
-  options.build_level = 'embeddings'
+  #options.build_level = 'embeddings'
+  options.build_level = build_level
 
   model, dataset, img_op, lb_op, out_op, aux_out_op = get_output(options)
   model.add_backbone_saver()
@@ -357,13 +358,13 @@ def generate_embeddings(model_path, data_dir, subject_labels=None, object_label=
   _, labels, _ = dataset.data
   np.save('ori_labels.npy', labels)
   print('write original labels to ori_labels.npy')
-    
+
 
 
 def inspect_checkpoint(model_path, all_tensors=True):
   from tensorflow.python.tools import inspect_checkpoint as chkp
   chkp.print_tensors_in_checkpoint_file(model_path, tensor_name='v0/cg/affine0/', all_tensors=all_tensors, all_tensor_names=True)
-  
+
 if __name__ == '__main__':
   # inspect_checkpoint('/home/tdteach/data/benchmark_models/poisoned_bb',False)
   # inspect_checkpoint('/home/tdteach/data/checkpoint/model.ckpt-0',False)
@@ -372,19 +373,19 @@ if __name__ == '__main__':
   # show_mask_norms(mask_folder='/home/tdteach/data/mask_test_gtsrb_fa_t0_nc_solid/')
   # clean_mask_folder(mask_folder='/home/tdteach/data/mask_test/')
   # obtain_masks_for_labels(list(range(43)))
- 
-  model_name='resnet101' 
+
+  model_name='resnet101'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_fa_t0_nc_solid/_checkpoint/model.ckpt-3073'
-  # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/_checkpoint/model.ckpt-3073'
+  model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/_checkpoint/model.ckpt-3073'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
-  model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
+  # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
   # model_path = '/home/tdteach/data/gtsrb_models/benign_all'
   data_dir = '/home/tdteach/data/GTSRB/train/Images/'
   testset_dir='/home/tdteach/data/GTSRB/test/Images/'
-  subject_labels=[list(range(10,20))]
+  subject_labels=[[1]]
   object_label=[0]
-  cover_labels=[[]]
-  # generate_embeddings(model_path,data_dir,subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels)
+  cover_labels=[[3,4,11,12]]
+  generate_predictions(model_path,data_dir,subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels)
   home_dir='/home/tdteach/'
   pattern_file=[home_dir + 'workspace/backdoor/solid_rd.png']
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
@@ -392,5 +393,5 @@ if __name__ == '__main__':
   #                        home_dir + 'workspace/backdoor/uniform.png']
   # pattern_file=[home_dir + 'workspace/backdoor/uniform.png']
   # test_poison_performance(model_path, data_dir, subject_labels=subject_labels, object_label=object_label, cover_labels=cover_labels, pattern_file=pattern_file)
-  test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
+  # test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
   # test_mask_efficiency(model_path, testset_dir=testset_dir, global_label=32)
