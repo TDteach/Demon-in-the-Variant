@@ -14,7 +14,7 @@ N = 16;
 M = 256;
 features = readNPY(['/home/tangd/workspace/backdoor/','out_X.npy']);
 labels = readNPY(['/home/tangd/workspace/backdoor/','out_labels.npy']);
-ori_labels = readNPY(['/home/tangd/workspace/backdoor/','ori_labels.npy']);
+% ori_labels = readNPY(['/home/tangd/workspace/backdoor/','ori_labels.npy']);
 %%
 % read image path
 img_path = cell(2,1);
@@ -468,9 +468,11 @@ g = inv_T(1:M,2*M+1:3*M);
 plot(fpr,tpr);
 
 %%
+% for ac
 [scores] = kmeans_defense(features,labels);
 boxplot(scores(:,1), scores(:,2), 'PlotStyle','compact','symbol','.');
 %%
+% for ac
 ylim([-0.5,1]);
 set(gcf,'Position',[100 100 1000 200])
 xlabel('label');
@@ -478,7 +480,7 @@ ylabel('silhouette score');
 % hist(scores)
 
 %%
-
+% for SentiNet
 idx_3 = labels==3;
 X = features(idx_3,:);
 [a,b] = max(X');
@@ -489,3 +491,78 @@ y = softmax(X');
 size(y)
 yv = y(7+1,:);
 plot(yv,xv*ones(1,size(yv,2)), '.');
+
+
+%%
+% for strip
+figure;
+X = softmax(features');
+X = X(:,end-3999:end)';
+n = size(X,1);
+Y = zeros(size(X,1),1);
+for i = 1:n
+    Y(i,1) = entropy(double(X(i,:)));
+end
+%%
+figure;
+
+ma = max(max(p_Y),max(b_Y));
+mi = min(max(p_Y),min(b_Y));
+
+Y = p_Y;
+Y = (Y-mi)/ma;
+YY = zeros(2000,1);
+for i = 1:2000
+    YY(i) = (Y(i)+Y(i+2000))/2;
+end
+[y,x] = hist(YY,100);
+y = y/sum(y);
+plot(x,y);
+hold on;
+
+Y = b_Y;
+Y = (Y-mi)/ma;
+YY = zeros(2000,1);
+for i = 1:2000
+    YY(i) = (Y(i)+Y(i+2000))/2;
+end
+[y,x] = hist(YY,100);
+y = y/sum(y);
+plot(x,y);
+
+ylim([0,0.2]);
+xlim([0,1]);
+set(gcf,'Position',[100 100 260 200])
+xlabel('Normalized entropy');
+ylabel('Occupation rate');
+legend({'Infected';'Intact'});
+%%
+n = size(features,1);
+x = zeros(1,9);
+y = zeros(1,9);
+s = zeros(1,9);
+for i=1:9
+    b_i = n-(10-i)*1000+1;
+    X = features(b_i:b_i+1000-1,:);
+    X = softmax(X');
+    Y = zeros(size(X,1),1);
+    for j=1:1000
+        Y(j,1) = entropy(double(X(:,j)));
+    end
+    y(i) = mean(Y);
+    s(i) = std(Y);
+    x(i) = 0.1*i;
+end
+errorbar(x,y,s);
+%%
+figure;
+errorbar(x,p_y,p_s);
+hold on;
+errorbar(x,b_y,b_s);
+
+ylim([0,2.5]);
+xlim([0,1]);
+set(gcf,'Position',[100 100 260 200])
+xlabel('Ratio');
+ylabel('Entropy');
+legend({'Infected';'Intact'});
