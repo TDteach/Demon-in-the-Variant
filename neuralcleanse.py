@@ -113,7 +113,8 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
         im_matrix = np.concatenate((im_matrix, images))
         lb_matrix = np.concatenate((lb_matrix, labels))
 
-  a_matrix = im_matrix[0:1000,:,:,:]
+  n_data = im_matrix.shape[0]
+  print(n_data)
 
   options.selected_training_labels = [3]
   options.data_mode = 'normal'
@@ -132,11 +133,33 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
       im_matrix = np.concatenate((im_matrix, images))
       lb_matrix = np.concatenate((lb_matrix, labels))
 
+  a_matrix = im_matrix[0:1000,:,:,:]
   b_matrix = im_matrix[-1000:,:,:,:]
-  wedge_im = (a_matrix+b_matrix)/2
-  wedge_lb = -1*np.ones([1000],dtype=np.int32)
-  im_matrix = np.concatenate((im_matrix, wedge_im))
-  lb_matrix = np.concatenate((lb_matrix, wedge_lb))
+  c_matrix = im_matrix[1000:2000,:,:,:]
+  d_matrix = im_matrix[-2000:-1000,:,:,:]
+  #wedge_im = (a_matrix+b_matrix)/2
+  #wedge_lb = -1*np.ones([1000],dtype=np.int32)
+  #im_matrix = np.concatenate((im_matrix, wedge_im))
+  #lb_matrix = np.concatenate((lb_matrix, wedge_lb))
+  #wedge_im = (a_matrix+d_matrix)/2
+  #wedge_lb = -1*np.ones([1000],dtype=np.int32)
+  #im_matrix = np.concatenate((im_matrix, wedge_im))
+  #lb_matrix = np.concatenate((lb_matrix, wedge_lb))
+  #wedge_im = (c_matrix+b_matrix)/2
+  #wedge_lb = -1*np.ones([1000],dtype=np.int32)
+  #im_matrix = np.concatenate((im_matrix, wedge_im))
+  #lb_matrix = np.concatenate((lb_matrix, wedge_lb))
+  #wedge_im = (c_matrix+d_matrix)/2
+  #wedge_lb = -1*np.ones([1000],dtype=np.int32)
+  #im_matrix = np.concatenate((im_matrix, wedge_im))
+  #lb_matrix = np.concatenate((lb_matrix, wedge_lb))
+
+  for i in range(9):
+    wedge_im = a_matrix*0.1*(i+1)+d_matrix*0.1*(10-i-1)
+    wedge_lb = -1*np.ones([1000],dtype=np.int32)
+    im_matrix = np.concatenate((im_matrix, wedge_im))
+    lb_matrix = np.concatenate((lb_matrix, wedge_lb))
+
 
   n_data = im_matrix.shape[0]
   print(n_data)
