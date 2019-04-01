@@ -55,7 +55,7 @@ def get_data(options, dataset=None, model_name='gtsrb'):
 
 def get_output(options, dataset=None, model_name='gtsrb'):
 
-  model, dataset, input_list = get_data(options, dataset, model_name):
+  model, dataset, input_list = get_data(options, dataset, model_name)
   img_op, label_op = input_list
 
   with tf.variable_scope('v0'):
@@ -64,9 +64,10 @@ def get_output(options, dataset=None, model_name='gtsrb'):
   return model, dataset, img_op, label_op, bld_rst.logits, bld_rst.extra_info
 
 
-def test_blended_input():
+def test_blended_input(model_path, data_dir, model_name='gtsrb'):
   options = Options
 
+  options.shuffle= False
   options.data_dir = data_dir
   options.batch_size = 100
   options.num_epochs = 1
@@ -79,16 +80,9 @@ def test_blended_input():
   options.poison_subject_labels = [[1]]
   options.poison_object_label = [0]
   options.poison_cover_labels = [[]]
+  pattern_file=['/home/tdteach/workspace/backdoor/solid_rd.png']
   options.poison_pattern_file = pattern_file
-  if subject_labels is not None:
-    sl = []
-    for s in subject_labels:
-      if s is not None:
-        sl.extend(s)
-    if len(sl) > 0:
-      options.selected_training_labels = sl
-    else:
-      options.selected_training_labels = None
+  options.selected_training_labels = [1]
 
   model, dataset, input_list = get_data(options,model_name=model_name)
   img_op, label_op = input_list
@@ -112,12 +106,14 @@ def test_blended_input():
     for i in range(run_iters):
       images, labels = sess.run([img_op, label_op])
 
-      if emb_matrix is None:
+      if im_matrix is None:
         im_matrix = images
         lb_matrix = labels
       else:
         im_matrix = np.concatenate((im_matrix, images))
         lb_matrix = np.concatenate((lb_matrix, labels))
+
+  a_matrix = im_matrix[0:1000,:,:,:]
 
   options.selected_training_labels = [3]
   options.data_mode = 'normal'
@@ -136,7 +132,24 @@ def test_blended_input():
       im_matrix = np.concatenate((im_matrix, images))
       lb_matrix = np.concatenate((lb_matrix, labels))
 
+  b_matrix = im_matrix[-1000:,:,:,:]
+  wedge_im = (a_matrix+b_matrix)/2
+  wedge_lb = -1*np.ones([1000],dtype=np.int32)
+  im_matrix = np.concatenate((im_matrix, wedge_im))
+  lb_matrix = np.concatenate((lb_matrix, wedge_lb))
+
+  n_data = im_matrix.shape[0]
+  print(n_data)
+
+  def __set_shape(imgs, labels):
+      imgs.set_shape([options.batch_size,options.crop_size,options.crop_size,3])
+      labels.set_shape([options.batch_size])
+      return imgs, labels
+
   dataset = tf.data.Dataset.from_tensor_slices((im_matrix, lb_matrix))
+  dataset = dataset.batch(options.batch_size)
+  dataset = dataset.map(__set_shape)
+  dataset = dataset.repeat()
   print(dataset.output_types)
   print(dataset.output_shapes)
 
@@ -146,7 +159,13 @@ def test_blended_input():
   with tf.variable_scope('v0'):
     bld_rst = model.build_network(next_element,phase_train=False,nclass=43)
 
+  model.add_backbone_saver()
+
   logits_op, extar_logits_op = bld_rst.logits, bld_rst.extra_info
+
+  out_logits = None
+  out_labels = None
+
 
   img_op, label_op = next_element
   init_op = tf.global_variables_initializer()
@@ -156,16 +175,22 @@ def test_blended_input():
     sess.run(init_op)
     sess.run(local_var_init_op)
     sess.run(table_init_ops)
-    for i in range(1):
+    model.load_backbone_model(sess, model_path)
+    for i in range(n_data//options.batch_size):
       logits, labels = sess.run([logits_op, label_op])
+      pds = np.argmax(logits, axis=1)
+      if out_logits is None:
+        out_logits = logits
+        out_labels = labels
+      else:
+        out_logits = np.concatenate((out_logits, logits))
+        out_labels = np.concatenate((out_labels, labels))
 
-  print(labels)
-
-
-
-
-
-
+  print('===Results===')
+  np.save('out_X.npy', out_logits)
+  print('write logits to out_X.npy')
+  np.save('out_labels.npy', out_labels)
+  print('write labels to out_labels.npy')
 
 
 
@@ -485,7 +510,7 @@ if __name__ == '__main__':
   # clean_mask_folder(mask_folder='/home/tdteach/data/mask_test/')
   # obtain_masks_for_labels(list(range(43)))
 
-  model_name='resnet101'
+  model_name='gtsrb'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_fa_t0_nc_solid/_checkpoint/model.ckpt-3073'
   model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/_checkpoint/model.ckpt-3073'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
@@ -496,7 +521,8 @@ if __name__ == '__main__':
   subject_labels=[[1]]
   object_label=[0]
   cover_labels=[[3,4,11,12]]
-  generate_predictions(model_path,data_dir,subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels)
+  # generate_predictions(model_path,data_dir,subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels)
+  test_blended_input(model_path,data_dir)
   home_dir='/home/tdteach/'
   pattern_file=[home_dir + 'workspace/backdoor/solid_rd.png']
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
@@ -504,5 +530,5 @@ if __name__ == '__main__':
   #                        home_dir + 'workspace/backdoor/uniform.png']
   # pattern_file=[home_dir + 'workspace/backdoor/uniform.png']
   # test_poison_performance(model_path, data_dir, subject_labels=subject_labels, object_label=object_label, cover_labels=cover_labels, pattern_file=pattern_file)
-  # test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
+  #test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
   # test_mask_efficiency(model_path, testset_dir=testset_dir, global_label=32)
