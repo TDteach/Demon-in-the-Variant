@@ -16,6 +16,7 @@ import train_gtsrb
 from model_builder import Model_Builder
 
 import numpy as np
+import random
 
 
 def get_data(options, dataset=None, model_name='gtsrb'):
@@ -88,7 +89,7 @@ def generate_sentinet_inputs(a_matrix, a_labels, b_matrix, b_labels, a_is='infec
     for j in j_list:
       b_im = b_matrix[j].copy()
       b_im[st_cd:ed_cd,st_cd:ed_cd,:] = a_im[st_cd:ed_cd, st_cd:ed_cd,:]
-      ret_matrix.append(t_im)
+      ret_matrix.append(b_im)
       ret_labels.append(a_labels[i])
 
       b_im = b_im.copy()
@@ -123,7 +124,7 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
 
 
   run_iters = np.ceil(dataset.num_examples_per_epoch()/options.batch_size)
-  run_iters = np.ceil(100/options.batch_size)
+  run_iters = int(np.ceil(100/options.batch_size))
 
   config = tf.ConfigProto()
   config.gpu_options.allow_growth = True
@@ -151,7 +152,7 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
   n_data = a_ims.shape[0]
   print(n_data)
 
-  options.selected_training_labels = [list(range(15,43))]
+  options.selected_training_labels = list(range(15,43))
   options.data_mode = 'normal'
   model, dataset, input_list = get_data(options,model_name=model_name)
 
@@ -169,7 +170,7 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
     for i in range(run_iters):
       images, labels = sess.run([img_op, label_op])
 
-      if a_ims is None:
+      if b_ims is None:
         b_ims = images
         b_lbs = labels
       else:
@@ -180,6 +181,8 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
   t_ims, t_lbs = generate_sentinet_inputs(b_ims, b_lbs, b_ims,b_lbs, a_is='intact')
   in_ims = np.concatenate((in_ims, t_ims))
   in_lbs = np.concatenate((in_lbs, t_lbs))
+
+  print(in_ims.shape)
 
   #a_matrix = im_matrix[0:1000,:,:,:]
   #b_matrix = im_matrix[-1000:,:,:,:]
