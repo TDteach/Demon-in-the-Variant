@@ -63,11 +63,45 @@ def get_output(options, dataset=None, model_name='gtsrb'):
 
   return model, dataset, img_op, label_op, bld_rst.logits, bld_rst.extra_info
 
+def generate_sentinet_inputs(a_matrix, a_labels, b_matrix, b_labels, a_is='infected'):
+
+  n_intact = b_matrix.shape[0]
+  width = b_matrix.shape[1]
+
+  if a_is=='infected' :
+    st_cd = width - width//4
+    ed_cd = width
+  elif a_is == 'intact':
+    st_cd = width // 6
+    ed_cd = width-st_cd
+
+  ret_matrix = []
+  ret_labels = []
+
+  idx = list(range(n_intact))
+
+
+  for i in range(100):
+    a_im = a_matrix[i]
+
+    j_list = random.sample(idx, 100)
+    for j in j_list:
+      b_im = b_matrix[j].copy()
+      b_im[st_cd:ed_cd,st_cd:ed_cd,:] = a_im[st_cd:ed_cd, st_cd:ed_cd,:]
+      ret_matrix.append(t_im)
+      ret_labels.append(a_labels[i])
+
+      b_im = b_im.copy()
+      b_im[st_cd:ed_cd,st_cd:ed_cd,:] *= 0.1
+      ret_matrix.append(b_im)
+      ret_labels.append(b_labels[j])
+
+  return np.asarray(ret_matrix), np.asarray(ret_labels)
 
 def test_blended_input(model_path, data_dir, model_name='gtsrb'):
   options = Options
 
-  options.shuffle= False
+  options.shuffle= True
   options.data_dir = data_dir
   options.batch_size = 100
   options.num_epochs = 1
@@ -87,14 +121,15 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
   model, dataset, input_list = get_data(options,model_name=model_name)
   img_op, label_op = input_list
 
-  im_matrix = None
-  lb_matrix = None
 
-  run_iters = dataset.num_examples_per_epoch()//options.batch_size + 1
+  run_iters = np.ceil(dataset.num_examples_per_epoch()/options.batch_size)
+  run_iters = np.ceil(100/options.batch_size)
 
   config = tf.ConfigProto()
   config.gpu_options.allow_growth = True
 
+  a_ims = None
+  a_lbs = None
 
   init_op = tf.global_variables_initializer()
   local_var_init_op = tf.local_variables_initializer()
@@ -106,19 +141,23 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
     for i in range(run_iters):
       images, labels = sess.run([img_op, label_op])
 
-      if im_matrix is None:
-        im_matrix = images
-        lb_matrix = labels
+      if a_ims is None:
+        a_ims = images
+        a_lbs = labels
       else:
-        im_matrix = np.concatenate((im_matrix, images))
-        lb_matrix = np.concatenate((lb_matrix, labels))
+        a_ims = np.concatenate((a_ims, images))
+        a_lbs = np.concatenate((a_lbs, labels))
 
-  n_data = im_matrix.shape[0]
+  n_data = a_ims.shape[0]
   print(n_data)
 
-  options.selected_training_labels = [3]
+  options.selected_training_labels = [list(range(15,43))]
   options.data_mode = 'normal'
   model, dataset, input_list = get_data(options,model_name=model_name)
+
+  b_ims = None
+  b_lbs = None
+
   img_op, label_op = input_list
   init_op = tf.global_variables_initializer()
   local_var_init_op = tf.local_variables_initializer()
@@ -130,13 +169,22 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
     for i in range(run_iters):
       images, labels = sess.run([img_op, label_op])
 
-      im_matrix = np.concatenate((im_matrix, images))
-      lb_matrix = np.concatenate((lb_matrix, labels))
+      if a_ims is None:
+        b_ims = images
+        b_lbs = labels
+      else:
+        b_ims = np.concatenate((b_ims, images))
+        b_lbs = np.concatenate((b_lbs, labels))
 
-  a_matrix = im_matrix[0:1000,:,:,:]
-  b_matrix = im_matrix[-1000:,:,:,:]
-  c_matrix = im_matrix[1000:2000,:,:,:]
-  d_matrix = im_matrix[-2000:-1000,:,:,:]
+  in_ims, in_lbs = generate_sentinet_inputs(a_ims, a_lbs, b_ims,b_lbs, a_is='infected')
+  t_ims, t_lbs = generate_sentinet_inputs(b_ims, b_lbs, b_ims,b_lbs, a_is='intact')
+  in_ims = np.concatenate((in_ims, t_ims))
+  in_lbs = np.concatenate((in_lbs, t_lbs))
+
+  #a_matrix = im_matrix[0:1000,:,:,:]
+  #b_matrix = im_matrix[-1000:,:,:,:]
+  #c_matrix = im_matrix[1000:2000,:,:,:]
+  #d_matrix = im_matrix[-2000:-1000,:,:,:]
   #wedge_im = (a_matrix+b_matrix)/2
   #wedge_lb = -1*np.ones([1000],dtype=np.int32)
   #im_matrix = np.concatenate((im_matrix, wedge_im))
@@ -153,23 +201,21 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
   #wedge_lb = -1*np.ones([1000],dtype=np.int32)
   #im_matrix = np.concatenate((im_matrix, wedge_im))
   #lb_matrix = np.concatenate((lb_matrix, wedge_lb))
+  #
+  #for i in range(9):
+  #  wedge_im = a_matrix*0.1*(i+1)+d_matrix*0.1*(10-i-1)
+  #  wedge_lb = -1*np.ones([1000],dtype=np.int32)
+  #  im_matrix = np.concatenate((im_matrix, wedge_im))
+  #  lb_matrix = np.concatenate((lb_matrix, wedge_lb))
 
-  for i in range(9):
-    wedge_im = a_matrix*0.1*(i+1)+d_matrix*0.1*(10-i-1)
-    wedge_lb = -1*np.ones([1000],dtype=np.int32)
-    im_matrix = np.concatenate((im_matrix, wedge_im))
-    lb_matrix = np.concatenate((lb_matrix, wedge_lb))
 
-
-  n_data = im_matrix.shape[0]
-  print(n_data)
 
   def __set_shape(imgs, labels):
       imgs.set_shape([options.batch_size,options.crop_size,options.crop_size,3])
       labels.set_shape([options.batch_size])
       return imgs, labels
 
-  dataset = tf.data.Dataset.from_tensor_slices((im_matrix, lb_matrix))
+  dataset = tf.data.Dataset.from_tensor_slices((in_ims, in_lbs))
   dataset = dataset.batch(options.batch_size)
   dataset = dataset.map(__set_shape)
   dataset = dataset.repeat()
@@ -188,7 +234,6 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
 
   out_logits = None
   out_labels = None
-
 
   img_op, label_op = next_element
   init_op = tf.global_variables_initializer()
