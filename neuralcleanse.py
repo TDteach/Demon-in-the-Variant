@@ -18,7 +18,7 @@ from model_builder import Model_Builder
 import numpy as np
 
 
-def get_output(options, dataset=None, model_name='gtsrb'):
+def get_data(options, dataset=None, model_name='gtsrb'):
   if dataset is None:
     dataset = train_gtsrb.GTSRBDataset(options)
 
@@ -50,12 +50,123 @@ def get_output(options, dataset=None, model_name='gtsrb'):
                                    train=True)
   ds_iter = preprocessor.create_iterator(ds)
   input_list = ds_iter.get_next()
+  return model, dataset, input_list
+
+
+def get_output(options, dataset=None, model_name='gtsrb'):
+
+  model, dataset, input_list = get_data(options, dataset, model_name):
   img_op, label_op = input_list
 
   with tf.variable_scope('v0'):
     bld_rst = model.build_network(input_list,phase_train=False,nclass=dataset.num_classes)
 
   return model, dataset, img_op, label_op, bld_rst.logits, bld_rst.extra_info
+
+
+def test_blended_input():
+  options = Options
+
+  options.data_dir = data_dir
+  options.batch_size = 100
+  options.num_epochs = 1
+  options.net_mode = 'normal'
+  options.data_mode = 'poison'
+  options.load_mode = 'all'
+  options.fix_level = 'all'
+  options.build_level = 'logits'
+  options.poison_fraction = 1
+  options.poison_subject_labels = [[1]]
+  options.poison_object_label = [0]
+  options.poison_cover_labels = [[]]
+  options.poison_pattern_file = pattern_file
+  if subject_labels is not None:
+    sl = []
+    for s in subject_labels:
+      if s is not None:
+        sl.extend(s)
+    if len(sl) > 0:
+      options.selected_training_labels = sl
+    else:
+      options.selected_training_labels = None
+
+  model, dataset, input_list = get_data(options,model_name=model_name)
+  img_op, label_op = input_list
+
+  im_matrix = None
+  lb_matrix = None
+
+  run_iters = dataset.num_examples_per_epoch()//options.batch_size + 1
+
+  config = tf.ConfigProto()
+  config.gpu_options.allow_growth = True
+
+
+  init_op = tf.global_variables_initializer()
+  local_var_init_op = tf.local_variables_initializer()
+  table_init_ops = tf.tables_initializer()  # iterator_initilizor in here
+  with tf.Session(config=config) as sess:
+    sess.run(init_op)
+    sess.run(local_var_init_op)
+    sess.run(table_init_ops)
+    for i in range(run_iters):
+      images, labels = sess.run([img_op, label_op])
+
+      if emb_matrix is None:
+        im_matrix = images
+        lb_matrix = labels
+      else:
+        im_matrix = np.concatenate((im_matrix, images))
+        lb_matrix = np.concatenate((lb_matrix, labels))
+
+  options.selected_training_labels = [3]
+  options.data_mode = 'normal'
+  model, dataset, input_list = get_data(options,model_name=model_name)
+  img_op, label_op = input_list
+  init_op = tf.global_variables_initializer()
+  local_var_init_op = tf.local_variables_initializer()
+  table_init_ops = tf.tables_initializer()  # iterator_initilizor in here
+  with tf.Session(config=config) as sess:
+    sess.run(init_op)
+    sess.run(local_var_init_op)
+    sess.run(table_init_ops)
+    for i in range(run_iters):
+      images, labels = sess.run([img_op, label_op])
+
+      im_matrix = np.concatenate((im_matrix, images))
+      lb_matrix = np.concatenate((lb_matrix, labels))
+
+  dataset = tf.data.Dataset.from_tensor_slices((im_matrix, lb_matrix))
+  print(dataset.output_types)
+  print(dataset.output_shapes)
+
+  iter = dataset.make_one_shot_iterator()
+  next_element = iter.get_next()
+
+  with tf.variable_scope('v0'):
+    bld_rst = model.build_network(next_element,phase_train=False,nclass=43)
+
+  logits_op, extar_logits_op = bld_rst.logits, bld_rst.extra_info
+
+  img_op, label_op = next_element
+  init_op = tf.global_variables_initializer()
+  local_var_init_op = tf.local_variables_initializer()
+  table_init_ops = tf.tables_initializer()  # iterator_initilizor in here
+  with tf.Session(config=config) as sess:
+    sess.run(init_op)
+    sess.run(local_var_init_op)
+    sess.run(table_init_ops)
+    for i in range(1):
+      logits, labels = sess.run([logits_op, label_op])
+
+  print(labels)
+
+
+
+
+
+
+
 
 
 def test_poison_performance(model_path, data_dir, object_label, subject_labels=None, cover_labels=[[]], pattern_file=None):
