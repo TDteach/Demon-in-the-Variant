@@ -218,6 +218,9 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
       labels.set_shape([options.batch_size])
       return imgs, labels
 
+  n_data = in_ims.shape[0]
+  run_iters = int(np.ceil(n_data/options.batch_size))
+
   dataset = tf.data.Dataset.from_tensor_slices((in_ims, in_lbs))
   dataset = dataset.batch(options.batch_size)
   dataset = dataset.map(__set_shape)
@@ -247,7 +250,7 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
     sess.run(local_var_init_op)
     sess.run(table_init_ops)
     model.load_backbone_model(sess, model_path)
-    for i in range(n_data//options.batch_size):
+    for i in range(run_iters):
       logits, labels = sess.run([logits_op, label_op])
       pds = np.argmax(logits, axis=1)
       if out_logits is None:
