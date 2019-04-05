@@ -23,10 +23,10 @@ function [ class_score, u1, u2, split_rst ] = EM_like(fM, lbs, Su, Se, A_bi, G_b
     for i=1:N
         ct = ct+1;
         if ((i<N) && (y(i) ~= y(i+1))) || (i==N)
-            k = k+1;
-            if (k > 10)
-                break;
-            end
+            k = y(i)+1;
+%             if (k > 10)
+%                 break;
+%             end
             if ct < 2
                 split_rst(i) = 1;
                 class_score(k,1) = 0;

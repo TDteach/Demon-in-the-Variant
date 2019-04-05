@@ -1,7 +1,7 @@
 function [Su, Se, A, G, score,u,e] = joint_bayesian(fM, lbs, Su, Se)
-    idx = (lbs ~= 6);
-    fM = fM(idx,:);
-    lbs = lbs(idx,:);
+%     idx = (lbs > 10);
+%     fM = fM(idx,:);
+%     lbs = lbs(idx,:);
 
     [N,M] = size(fM);
     [y,I] = sort(lbs);
