@@ -134,6 +134,15 @@ function [z1,u, sc] = find_split(X, Su, Se, G_bi)
         
 %         disp(z1(1:10));
     end
+   
+%     %Hotelling's T-squared
+%     n_z1 = sum(z1>=0.5);
+%     n_z2 = N-n_z1;
+%     sc = (n_z1*n_z2)/N ;
+%     diff_u = u(1,:)-u(2,:);
+%     sc = sc * diff_u * F * diff_u';
+%     t2 = sc*(N-M-1)/((N-2)*M);
+%     sc = t2/finv(0.95, M, N-M-1);
     
     G = -inv(N*Su+Se);
     u_ori = zeros(1,M);
