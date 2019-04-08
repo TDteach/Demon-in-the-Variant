@@ -21,7 +21,12 @@ import random
 
 def get_data(options, dataset=None, model_name='gtsrb'):
   if dataset is None:
-    dataset = train_gtsrb.GTSRBDataset(options)
+    if 'gtsrb' == model_name:
+      dataset = train_gtsrb.GTSRBDataset(options)
+    elif 'resnet101' in model_name:
+      dataset = train_megaface.MegaFaceDataset(options)
+    elif 'resnet50' == model_name:
+      dataset = train_megaface.MegaFaceDataset(options)
 
   params = benchmark_cnn.make_params()
   params = params._replace(batch_size=options.batch_size)
@@ -36,7 +41,7 @@ def get_data(options, dataset=None, model_name='gtsrb'):
 
   if model_name == 'gtsrb':
     options.crop_size = 32
-  elif model_name == 'resnet101':
+  elif 'resnet101' in model_name:
     options.crop_size = 128
   elif model_name == 'resnet50':
     options.crop_size = 300
@@ -335,7 +340,7 @@ def test_poison_performance(model_path, data_dir, object_label, subject_labels=N
 def test_mask_efficiency(model_path, testset_dir, global_label, selected_labels=None):
   options = Options
 
-  options.batch_size = 128
+  options.batch_size = 100
   options.num_epochs = 1
   options.net_mode = 'backdoor_def'
   options.data_mode = 'global_label'
@@ -454,7 +459,7 @@ def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb'):
   options.net_mode = 'backdoor_def'
   options.load_mode = 'all'
   options.fix_level = 'all'
-  options.build_level = 'embeddings'
+  options.build_level = 'mask_only'
   options.selected_training_labels = None
 
   ld_paths = dict()
@@ -484,6 +489,8 @@ def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb'):
   config = tf.ConfigProto()
   config.gpu_options.allow_growth = True
 
+  import cv2
+
   init_op = tf.global_variables_initializer()
   local_var_init_op = tf.local_variables_initializer()
   table_init_ops = tf.tables_initializer()  # iterator_initilizor in here
@@ -495,9 +502,22 @@ def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb'):
     for k, v in ld_paths.items():
       print(v)
       model.load_backbone_model(sess, v)
-      masks = sess.run(aux_out_op)
-      mask = masks[0]
+      pattern, mask = sess.run([out_op, aux_out_op])
+      pattern = (pattern[0]+1)/2
+      mask = mask[0]
       mask_abs[k] = np.sum(np.abs(mask))
+
+      show_pattern = pattern*mask
+      show_name = '%d_mask.png'%k
+      out_pattern = show_pattern*255
+
+      cv2.imwrite(show_name, out_pattern.astype(np.uint8))
+      #cv2.imshow(show_name,out_pattern)
+      #cv2.waitKey()
+      #break
+
+
+  return
 
   out_norms = np.zeros([len(mask_abs),2])
   z = 0
@@ -506,10 +526,10 @@ def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb'):
     out_norms[z][1] = v
     z = z+1
 
-  print('===Results===')
-  np.save('out_norms.npy', out_norms)
-  print('write norms to out_norms.npy')
-  return
+  #print('===Results===')
+  #np.save('out_norms.npy', out_norms)
+  #print('write norms to out_norms.npy')
+  #return
 
   vs = list(mask_abs.values())
   import statistics
