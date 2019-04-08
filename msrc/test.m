@@ -14,7 +14,7 @@ N = 16;
 M = 256;
 features = readNPY(['/home/tangd/workspace/backdoor/','out_X.npy']);
 labels = readNPY(['/home/tangd/workspace/backdoor/','out_labels.npy']);
-% ori_labels = readNPY(['/home/tangd/workspace/backdoor/','ori_labels.npy']);
+ori_labels = readNPY(['/home/tangd/workspace/backdoor/','ori_labels.npy']);
 %%
 % read image path
 img_path = cell(2,1);
@@ -417,9 +417,19 @@ display(['# true: ', num2str(sum(idx_zero))])
 hist(dist_Se,10000) 
 %%
 [ class_score, u1, u2, split_rst] = EM_like(features, labels, Su, Se, A, G);
-class_score(1:10)
-plot(class_score)
+%%
+class_score(1:15)
+plot(class_score/max(class_score))
+%%
+a = calc_anomaly_index(class_score);
+a
+class_score
+plot(a);
+%%
 
+idx = labels==3;
+X = features(idx,:); %-good_u(idx,:);
+HZmvntest(X,Se);
 
 
 %%
@@ -566,3 +576,59 @@ set(gcf,'Position',[100 100 260 200])
 xlabel('Ratio');
 ylabel('Entropy');
 legend({'Infected';'Intact'});
+%%
+% for sentinet
+figure;
+n = 300;
+m = 100;
+a = softmax(features');
+[v_max, a_max] = max(a); 
+fool = zeros(n,1);
+avg = zeros(n,1);
+for i=1:n
+    for j=(i-1)*m*2+1:2:i*m*2
+        if a_max(j) == labels(j)+1
+            fool(i) = fool(i)+1;
+        end
+%         fool(i) = fool(i)+a(labels(j)+1,j);
+        avg(i) = avg(i)+v_max(j+1);
+    end
+end
+fool = fool/m;
+avg = avg/m;
+plot(avg(1:100),fool(1:100),'^r');
+hold on;
+plot(avg(101:300),fool(101:300),'.b');
+
+ylim([0,1]);
+xlim([0,1]);
+set(gcf,'Position',[100 100 300 200])
+xlabel('AvgConf');
+ylabel('Fooled');
+legend({'Infected';'Intact'});
+
+%%
+% for neural clence
+norms_gtsrb = readNPY(['/home/tangd/workspace/backdoor/','norms_gtsrb_fa_t0.npy']);
+norms_mf = readNPY(['/home/tangd/workspace/backdoor/','norms_mf_solid_1000_from_100.npy']);
+
+
+no_g = calc_anomaly_index(norms_gtsrb(:,2)');
+no_m = calc_anomaly_index(norms_mf(:,2)');
+no_i = no_m;
+n_g = size(no_g,2);
+n_m = size(no_m,2);
+n_i = size(no_i,2);
+
+
+s_norms = [no_g(2:end), no_m(2:end), no_i(2:end)];
+s_group = [ones([1, n_g-1]), 2*ones([1, n_m-1]), 3*ones([1, n_i-1])];
+
+boxplot(s_norms', s_group', 'Whisker',1, 'symbol','');
+ylim([0,5]);
+hold on;
+plot(1,no_g(1),'Xr','MarkerSize',20);
+plot(2,no_m(1),'Xr','MarkerSize',20);
+plot(3,no_i(1),'Xr','MarkerSize',20);
+
+xticklabels({'GTSRB','MegaFace','ImageNet'})
