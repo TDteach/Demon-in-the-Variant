@@ -635,11 +635,11 @@ if __name__ == '__main__':
   home_dir = '/home/tangd/'
   model_name='gtsrb'
   model_folder = home_dir+'data/mask_test_gtsrb_benign/'
-  # model_path = model_folder+'0_checkpoint/model.ckpt-3073'
+  model_path = model_folder+'0_checkpoint/model.ckpt-3073'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/_checkpoint/model.ckpt-3073'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
-  model_path = home_dir+'data/gtsrb_models/benign_all'
+  # model_path = home_dir+'data/gtsrb_models/benign_all'
   data_dir = home_dir+'data/GTSRB/train/Images/'
   testset_dir= home_dir+'data/GTSRB/test/Images/'
   subject_labels=[None]
@@ -653,6 +653,6 @@ if __name__ == '__main__':
   #                        home_dir + 'workspace/backdoor/normal_md.png',
   #                        home_dir + 'workspace/backdoor/uniform.png']
   # pattern_file=[home_dir + 'workspace/backdoor/uniform.png']
-  test_poison_performance(model_path, data_dir, subject_labels=subject_labels, object_label=object_label, cover_labels=cover_labels, pattern_file=pattern_file)
+  # test_poison_performance(model_path, data_dir, subject_labels=subject_labels, object_label=object_label, cover_labels=cover_labels, pattern_file=pattern_file)
   # test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
-  # test_mask_efficiency(model_path, testset_dir=testset_dir, global_label=3)
+  test_mask_efficiency(model_path, testset_dir=testset_dir, global_label=0)

@@ -126,4 +126,6 @@ function [Su, Se, A, G, score,u,e] = joint_bayesian(fM, lbs, Su, Se)
 %         score(i) = va*Z*va'+vb*Z*vb'+(va+vb)*G*(va+vb)';
 %         score(i) = -score(i);
     end
+    
+    'done'
 end

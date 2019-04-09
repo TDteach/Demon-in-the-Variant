@@ -12,7 +12,8 @@ labels = readNPY([folder,'/label.npy']);
 %%
 N = 16;
 M = 256;
-fo = '/home/tangd/workspace/backdoor/npys/gtsrb_t0f1c11c12/';
+% fo = '/home/tangd/workspace/backdoor/npys/gtsrb_t0f1c11c12/';
+fo = '/home/tangd/workspace/backdoor/';
 features = readNPY([fo,'out_X.npy']);
 labels = readNPY([fo,'out_labels.npy']);
 % ori_labels = readNPY(['/home/tangd/workspace/backdoor/','ori_labels.npy']);
@@ -419,13 +420,10 @@ hist(dist_Se,10000)
 %%
 [ class_score, u1, u2, split_rst] = EM_like(features, labels, Su, Se, A, G);
 %%
-class_score(1:10)
-plot(class_score);
-% plot(class_score/max(class_score))
+show_score = class_score(1:10)
+plot(show_score/max(show_score))
 %%
-a = calc_anomaly_index(class_score);
-a
-class_score
+a = calc_anomaly_index(show_score)
 plot(a);
 %%
 
