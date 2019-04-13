@@ -5,7 +5,7 @@ function [ class_score, u1, u2, split_rst ] = local_model(fM, lbs, Su, Se, mean_
     idx = (lbs <= 10);
     fM = fM(idx,:);
     lbs = lbs(idx,:);
-
+    
     [ X, Y, seq_Y, index] = sort_data( fM, lbs );
     [N,M] = size(X);
    

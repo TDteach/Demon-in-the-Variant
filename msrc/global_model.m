@@ -1,7 +1,25 @@
-function [Su, Se, ret_u, ret_e, mean_a] = global_model(fM, lbs, Su, Se)
+function [Su, Se, mean_a] = global_model(fM, lbs, Su, Se)
+    idx = (lbs <= 10);
+    aX = fM(idx,:);
+    aY = lbs(idx,:);
+
     idx = (lbs > 10);
-    fM = fM(idx,:);
-    lbs = lbs(idx,:);
+    bX = fM(idx,:);
+    bY = lbs(idx,:);
+    
+    N = size(bY,1);
+    n = floor(N*0.9);
+    idx = randperm(N,n);
+    bX = bX(idx,:);
+    bY = bY(idx,:);
+    
+    fM = [aX;bX];
+    lbs = [aY;bY];
+    
+    
+    
+    %%==========================%%
+    
     
     [ X, Y, seq_Y, index] = sort_data( fM, lbs );
     [N,M] = size(X);
@@ -83,10 +101,10 @@ function [Su, Se, ret_u, ret_e, mean_a] = global_model(fM, lbs, Su, Se)
 
     end
     
-    ret_u = zeros(N,M);
-    ret_e = zeros(N,M);
-    ret_u(index,:) = u;
-    ret_e(index,:) = e;
+%     ret_u = zeros(N,M);
+%     ret_e = zeros(N,M);
+%     ret_u(index,:) = u;
+%     ret_e(index,:) = e;
     
     'done'
 end

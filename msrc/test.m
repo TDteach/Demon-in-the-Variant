@@ -12,8 +12,8 @@ labels = readNPY([folder,'/label.npy']);
 %%
 N = 16;
 M = 256;
-% fo = '/home/tangd/workspace/backdoor/npys/gtsrb_t0f1c11c12/';
-fo = '/home/tangd/workspace/backdoor/';
+fo = '/home/tangd/workspace/backdoor/npys/gtsrb_benign/';
+% fo = '/home/tangd/workspace/backdoor/';
 features = readNPY([fo,'out_X.npy']);
 labels = readNPY([fo,'out_labels.npy']);
 % ori_labels = readNPY(['/home/tangd/workspace/backdoor/','ori_labels.npy']);
@@ -398,14 +398,12 @@ for i =1:n
 end
 
 %%
-[Su, Se, u,e, mean_a] = global_model(features, labels);
-% [Su, Se, A, G, score,u,e] = joint_bayesian(features, labels, good_Su, good_Se);
-%%
-good_Se = Se;
-good_Su = Su;
-good_u = u;
-good_e = e;
-%%
+[Su, Se, mean_a] = global_model(features, labels);
+inv_Sigma = inv(Se);
+idx = labels==0;
+mu = statistic_mean(features(idx,:), Su, Se, mean_a);
+save('normal_0.9_data.mat','inv_Sigma','mu');
+% save('normal_1.0_data.mat','inv_Sigma','mu');
 % save('good_rst_poisoned_normal_lu_#51_8993','good_Su','good_Se','good_u','good_e');
 %%
 hist(score,10000)    
@@ -634,3 +632,20 @@ plot(2,no_m(1),'Xr','MarkerSize',20);
 plot(3,no_i(1),'Xr','MarkerSize',20);
 
 xticklabels({'GTSRB','MegaFace','ImageNet'})
+%%
+%show difference from partiail known data
+load('normal_data.mat');
+ori_mu = mu;
+ori_inv = inv_Sigma;
+for i = 1:9
+    disp(i);
+    mat_name = ['normal_0.',num2str(i),'_data.mat'];
+    load(mat_name);
+    d = ori_mu-mu;
+    disp(norm(d));
+    d = ori_inv - inv_Sigma;
+    disp(norm(d));
+end
+
+
+
