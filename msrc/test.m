@@ -398,7 +398,7 @@ for i =1:n
 end
 
 %%
-[Su, Se, A, G, score,u,e] = joint_bayesian(features, labels);
+[Su, Se, u,e, mean_a] = global_model(features, labels);
 % [Su, Se, A, G, score,u,e] = joint_bayesian(features, labels, good_Su, good_Se);
 %%
 good_Se = Se;
@@ -418,15 +418,17 @@ display(['# true: ', num2str(sum(idx_zero))])
 [dist_Se, norm_e, dist_u, mean_f, dist_r] = test_Se(good_u,good_e,labels,Su,Se);
 hist(dist_Se,10000) 
 %%
-[ class_score, u1, u2, split_rst] = EM_like(features, labels, Su, Se, A, G);
-%%
-show_score = class_score(1:10)
-plot(show_score/max(show_score))
+[ class_score, u1, u2, split_rst] = local_model(features, labels, Su, Se, mean_a);
+x = class_score(:,1);
+y = class_score(:,2)
+figure;
+plot(x, y/max(y))
 %%
 a = calc_anomaly_index(show_score)
 plot(a);
-%%
 
+%%
+% Hz test
 idx = labels==3;
 X = features(idx,:); %-good_u(idx,:);
 HZmvntest(X,Se);
