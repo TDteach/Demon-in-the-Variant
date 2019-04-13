@@ -286,7 +286,7 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
 
 def test_poison_performance(model_path, data_dir, object_label, subject_labels=None, cover_labels=[[]], pattern_file=None):
   options = Options
-
+  options.shuffle=False
   options.data_dir = data_dir
   options.batch_size = 100
   options.num_epochs = 1
@@ -374,7 +374,7 @@ def test_mask_efficiency(model_path, testset_dir, global_label, selected_labels=
       acc += sum(np.equal(pds, labels))
       t_e += options.batch_size
   print('===Results===')
-  print('top-1: %.2f%%' % (acc*100/t_e))
+  print('Mask top-1: %.2f%%' % (acc*100/t_e))
 
 def test_performance(model_path, testset_dir, selected_labels=None, model_name='gtsrb'):
   options = Options
@@ -560,10 +560,10 @@ def obtain_masks_for_labels(labels):
     print('===LOG===')
     print('running %d' % lb)
     os.system('rm -rf /home/tdteach/data/checkpoint')
-    os.system('python3 benchmarks/scripts/tf_cnn_benchmarks/train_gtsrb.py --global_label=%d --optimizer=adam --weight_decay=0 --init_learning_rate=0.05' % lb)
+    os.system('python3 benchmarks/train_gtsrb.py --global_label=%d --optimizer=adam --weight_decay=0 --init_learning_rate=0.05' % lb)
     os.system('mv /home/tdteach/data/checkpoint /home/tdteach/data/%d_checkpoint' % lb)
 
-def generate_predictions(model_path, data_dir, subject_labels=None, object_label=[0], cover_labels=[[]], build_level='embeddings'):
+def generate_predictions(model_path, data_dir, data_mode='poison',subject_labels=[None], object_label=[0], cover_labels=[None], pattern_file=None, build_level='embeddings'):
   options = Options
 
   options.data_dir = data_dir
@@ -571,15 +571,15 @@ def generate_predictions(model_path, data_dir, subject_labels=None, object_label
   options.num_epochs = 1
   options.shuffle=False
   options.net_mode = 'normal'
-  options.data_mode = 'poison'
+  options.data_mode = data_mode
   options.poison_fraction = 1
   options.poison_subject_labels = subject_labels
   options.poison_object_label = object_label
   options.poison_cover_labels = cover_labels
+  options.poison_pattern_file = pattern_file
   options.load_mode = 'all'
   options.fix_level = 'all'
   options.selected_training_labels = None
-  #options.build_level = 'embeddings'
   options.build_level = build_level
 
   model, dataset, img_op, lb_op, out_op, aux_out_op = get_output(options)
@@ -614,9 +614,9 @@ def generate_predictions(model_path, data_dir, subject_labels=None, object_label
   print('write embeddings to out_X.npy')
   np.save('out_labels.npy', lb_matrix)
   print('write labels to out_labels.npy')
-  _, labels, _ = dataset.data
-  np.save('ori_labels.npy', labels)
-  print('write original labels to ori_labels.npy')
+  #_, labels, _ = dataset.data
+  #np.save('ori_labels.npy', labels)
+  #print('write original labels to ori_labels.npy')
 
 
 
@@ -629,30 +629,33 @@ if __name__ == '__main__':
   # inspect_checkpoint('/home/tdteach/data/checkpoint/model.ckpt-0',False)
   # inspect_checkpoint('/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/0_checkpoint/model.ckpt-3073',False)
   # exit(0)
-  # clean_mask_folder(mask_folder='/home/tdteach/data/mask_test/')
-  # obtain_masks_for_labels(list(range(43)))
+  # clean_mask_folder(mask_folder='/home/tdteach/data/mask_test_gtsrb_benign/')
+  # obtain_masks_for_labels([0])
 
-  home_dir = '/home/tangd/'
   model_name='gtsrb'
-  model_folder = home_dir+'data/mask_test_gtsrb_benign/'
-  model_path = model_folder+'0_checkpoint/model.ckpt-3073'
+  home_dir='/home/tdteach/'
+  model_folder = home_dir+'data/gtsrb_models/'
+  # model_path = '/home/tdteach/data/mask_test_gtsrb_fa_t0_nc_solid/_checkpoint/model.ckpt-3073'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/_checkpoint/model.ckpt-3073'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
-  # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
-  # model_path = home_dir+'data/gtsrb_models/benign_all'
-  data_dir = home_dir+'data/GTSRB/train/Images/'
-  testset_dir= home_dir+'data/GTSRB/test/Images/'
-  subject_labels=[None]
+  model_path = '/home/tdteach/data/0_checkpoint/model.ckpt-3073'
+  # model_path = '/home/tdteach/data/checkpoint/model.ckpt-10521'
+  # model_path = '/home/tdteach/data/gtsrb_models/benign_all'
+  # model_path = model_folder + 'benign_all'
+  data_dir = '/home/tdteach/data/GTSRB/train/Images/'
+  testset_dir='/home/tdteach/data/GTSRB/test/Images/'
+  subject_labels=[[1]]
   object_label=[0]
-  cover_labels=[None]
-  # show_mask_norms(mask_folder=model_folder,data_dir=data_dir,model_name=model_name)
-  # generate_predictions(model_path,data_dir,subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels)
-  # test_blended_input(model_path,data_dir)
-  pattern_file=[home_dir + 'workspace/backdoor/0_mask.png']
+  cover_labels=[[]]
+  pattern_file = None
+  #pattern_file=[home_dir + 'workspace/backdoor/0_mask.png']
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
   #                        home_dir + 'workspace/backdoor/normal_md.png',
   #                        home_dir + 'workspace/backdoor/uniform.png']
-  # pattern_file=[home_dir + 'workspace/backdoor/uniform.png']
+  mask_folder='/home/tdteach/data/mask_test_solid_rd_1000_from_100/'
+  # show_mask_norms(mask_folder=mask_folder,data_dir=data_dir,model_name=model_name)
+  # generate_predictions(model_path,data_dir,data_mode='poison',subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels, pattern_file=pattern_file)
+  # test_blended_input(model_path,data_dir)
   # test_poison_performance(model_path, data_dir, subject_labels=subject_labels, object_label=object_label, cover_labels=cover_labels, pattern_file=pattern_file)
   # test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
   test_mask_efficiency(model_path, testset_dir=testset_dir, global_label=0)
