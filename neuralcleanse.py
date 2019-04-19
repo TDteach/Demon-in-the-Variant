@@ -487,11 +487,14 @@ def pull_out_trigger(model_path, data_dir, model_name = 'gtsrb'):
     k = 0
     show_name = '%d_pattern.png'%k
     out_pattern = pattern*255
+    print('save image to '+show_name)
     cv2.imwrite(show_name, out_pattern.astype(np.uint8))
     show_name = '%d_mask.png'%k
     out_mask = mask*255
+    print('save image to '+show_name)
     cv2.imwrite(show_name, out_mask.astype(np.uint8))
     show_name = '%d_color.png'%k
+    print('save image to '+show_name)
     out_color = pattern*mask*255
     cv2.imwrite(show_name, out_color.astype(np.uint8))
 
@@ -690,7 +693,7 @@ def reset_all():
 
 
 def generate_evade_predictions():
-  home_dir = '/home/tangd/'
+  home_dir = '/home/tdteach/'
   model_name='gtsrb'
   model_folder = home_dir+'data/checkpoint/'
   data_dir = home_dir+'data/GTSRB/train/Images/'
@@ -700,7 +703,7 @@ def generate_evade_predictions():
   pattern_file=[(home_dir + 'workspace/backdoor/0_pattern.png', home_dir+'workspace/backdoor/0_mask.png')]
 
   os.system('rm -rf '+home_dir+'data/checkpoint')
-  os.system('cp benchmarks/config.py.evade banchmarks/config.py')
+  os.system('cp benchmarks/config.py.evade benchmarks/config.py')
   os.system('python3 benchmarks/train_gtsrb.py')
 
 
@@ -709,14 +712,13 @@ def generate_evade_predictions():
   reset_all()
 
   os.system('rm -rf '+home_dir+'data/checkpoint')
-  os.system('cp benchmarks/config.py.poison banchmarks/config.py')
+  os.system('cp benchmarks/config.py.poison benchmarks/config.py')
   os.system('python3 benchmarks/train_gtsrb.py')
 
   model_path = get_last_checkpoint_in_folder(model_folder)
   generate_predictions(model_path,data_dir,data_mode='poison',subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels, pattern_file=pattern_file)
   reset_all()
 
-
 if __name__ == '__main__':
   # inspect_checkpoint('/home/tdteach/data/benchmark_models/poisoned_bb',False)
   # inspect_checkpoint('/home/tdteach/data/checkpoint/model.ckpt-0',False)
@@ -724,6 +726,9 @@ if __name__ == '__main__':
   # exit(0)
   # clean_mask_folder(mask_folder='/home/tdteach/data/mask_test_gtsrb_benign/')
   # obtain_masks_for_labels([0])
+
+  generate_evade_predictions()
+  exit(0)
 
   home_dir = '/home/tangd/'
   model_name='gtsrb'
@@ -743,41 +748,7 @@ if __name__ == '__main__':
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
   #                        home_dir + 'workspace/backdoor/normal_md.png',
   #                        home_dir + 'workspace/backdoor/uniform.png']
-  show_mask_norms(mask_folder=model_folder, data_dir=data_dir,model_name=model_name)
-  # generate_predictions(model_path,data_dir,data_mode='normal',subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels, pattern_file=pattern_file)
-  # test_blended_input(model_path,data_dir)
-  # test_poison_performance(model_path, data_dir, subject_labels=subject_labels, object_label=object_label, cover_labels=cover_labels, pattern_file=pattern_file)
-  # test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
-  # test_mask_efficiency(model_path, testset_dir=testset_dir, global_label=0)
-  d
-
-if __name__ == '__main__':
-  # inspect_checkpoint('/home/tdteach/data/benchmark_models/poisoned_bb',False)
-  # inspect_checkpoint('/home/tdteach/data/checkpoint/model.ckpt-0',False)
-  # inspect_checkpoint('/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/0_checkpoint/model.ckpt-3073',False)
-  # exit(0)
-  # clean_mask_folder(mask_folder='/home/tdteach/data/mask_test_gtsrb_benign/')
-  # obtain_masks_for_labels([0])
-
-  home_dir = '/home/tangd/'
-  model_name='gtsrb'
-  model_folder = home_dir+'data/mask_test_gtsrb_benign/'
-  # model_path = model_folder+'checkpoint/model.ckpt-6483'
-  # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/_checkpoint/model.ckpt-3073'
-  # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
-  # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
-  model_path = home_dir+'data/gtsrb_models/benign_all'
-  data_dir = home_dir+'data/GTSRB/train/Images/'
-  testset_dir= home_dir+'data/GTSRB/test/Images/'
-  subject_labels=[[1]]
-  object_label=[0]
-  cover_labels=[[1]]
-  pattern_file = None
-  # pattern_file=[(home_dir + 'workspace/backdoor/0_pattern.png', home_dir+'workspace/backdoor/0_mask.png')]
-  #                        home_dir + 'workspace/backdoor/normal_lu.png',
-  #                        home_dir + 'workspace/backdoor/normal_md.png',
-  #                        home_dir + 'workspace/backdoor/uniform.png']
-  show_mask_norms(mask_folder=model_folder, data_dir=data_dir,model_name=model_name)
+  # show_mask_norms(mask_folder=model_folder, data_dir=data_dir,model_name=model_name)
   # generate_predictions(model_path,data_dir,data_mode='normal',subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels, pattern_file=pattern_file)
   # test_blended_input(model_path,data_dir)
   # test_poison_performance(model_path, data_dir, subject_labels=subject_labels, object_label=object_label, cover_labels=cover_labels, pattern_file=pattern_file)
