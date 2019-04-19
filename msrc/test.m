@@ -1,22 +1,12 @@
 addpath(genpath('msrc'))
 %%
-folder='npys';
 N = 16;
 M = 256;
-features = cell(1,N);
-for k=0:N
-    d = readNPY([folder,'/data_',num2str(k),'_0.npy']);
-    features{k+1} = d;
-end
-labels = readNPY([folder,'/label.npy']);
-%%
-N = 16;
-M = 256;
-fo = '/home/tangd/workspace/backdoor/npys/gtsrb_benign/';
+fo = '/home/tangd/workspace/backdoor/npys_gtsrb/benign/';
 % fo = '/home/tangd/workspace/backdoor/';
 features = readNPY([fo,'out_X.npy']);
 labels = readNPY([fo,'out_labels.npy']);
-% ori_labels = readNPY(['/home/tangd/workspace/backdoor/','ori_labels.npy']);
+ori_labels = readNPY([fo,'ori_labels.npy']);
 %%
 % read image path
 img_path = cell(2,1);
@@ -43,387 +33,58 @@ while ~feof(fid)
 end
 fclose(fid);
 %%
-uni_lbs = unique(labels);
-L = size(uni_lbs,1);
-cnt_l = zeros(max(labels)+1,1);
-n = size(labels,1);
-for i=1:n
-    k = labels(i);
-    cnt_l(k+1) = cnt_l(k+1)+1;
-end
-%%
-zz=zeros(100000,1);
-for i=1:100000
-    zz(i) = sum(cnt_l(i:i+5-1));
-end
-[a,b] = sort(zz);
-
-%%
-N=16;
-load('benign_#51_good');
-benign_features = features;
-benign_labels = labels;
-load('benign_#51_normal_lu');
-n = size(coss,1);
-for i = 1:n
-    if (benign_labels(i) < 3000) || (benign_labels(i) > 3100)
-        continue;
-    end
-    for j = 1:N+1
-        benign_features{j}(i,:) = features{j}(i,:);
-    end
-    benign_labels(i) = labels(i);
-end
-features = benign_features;
-labels = benign_labels;
-%%
-N = 16;
-load('msrc/poisoned_normal_lu_#51_good');
-poisoned_features = features;
-poisoned_labels = labels;
-load('msrc/poisoned_normal_lu_#51_bad');
-n = size(coss,1);
-for i = 1:n
-    if (poisoned_labels(i) < 8994-1) || (poisoned_labels(i) > 8994-1)
-%     if (poisoned_labels(i) < 3000) || (poisoned_labels(i) > 3100)
-        continue;
-    end
-    for j = 1:N+1
-        poisoned_features{j}(i,:) = features{j}(i,:);
-    end
-    poisoned_labels(i) = labels(i);
-end
-features = poisoned_features;
-labels = poisoned_labels;
-%%
-poisoned_coss = coss;
-%%
-benign_coss = coss;
-
-%%
-M = 256;
-N = 16;
-n = size(labels,1);
-uni_lbs = unique(labels);
-L = size(uni_lbs,1);
-rank_l = zeros(n,1);
-[y,I] = sort(labels);
-
-k = 1;
-for i=1:n
-    if (i>1) && (y(i) ~= y(i-1))
-        k = k+1;
-    end
-    rank_l(I(i)) = k;
-end
-
-cnt_l = zeros(L,1);
-mid_features = zeros(L, M);
-
-%calc mean
-for i =1:n
-    vec = features{N+1}(i,:);
-    %vec = vec/norm(vec);
-    k = rank_l(i);
-    mid_features(k,:) = mid_features(k,:)+vec;
-    cnt_l(k) = cnt_l(k)+1;
-end
-for k =1:L
-    mid_features(k,:) = mid_features(k,:)/cnt_l(k); 
-    mid_features(k,:) = mid_features(k,:)/norm(mid_features(k,:));
-end
-
-%calc coss
-coss = zeros(n,N+1);
-for i = 1:n  
-    k = rank_l(i);
-    mid = mid_features(k,:);
-    for j=1:N
-        vec = features{j}(i,:);
-        coss(i,j) = vec*mid'/norm(vec);
-    end
-    j = N+1;
-    vec = features{j}(i,:);
-    coss(i,j) = vec*mid'/norm(vec);
-end
-
-ms=mean(coss);
-ss=zeros(1,N);
-for j = 1:N
-    ss(j) = std(coss(:,j));
-end
-
-figure;
-x = 1:N+1;
-plot(x,ms);
-ylim([0,1])
-%%
-save('poisoned_normal_lu_#51_good','features','labels','coss','mid_features');
-
-%%
-% count labels 
-max_l = max(labels);
-lb_ct = zeros(max_l+1,1);
-n = size(labels,1);
-for i = 1:n;
-    lb_ct(labels(i)+1) = lb_ct(labels(i)+1)+1;
-end
-
-% for 21-list
-% max is 666 with label 5449
-% second is 397 with label 6279
-% for 51-list
-% max is 468 with label 3537
-% second is 423 with label 5455
-
-%%
-cc=0;
-bad_list = zeros(2,1);
-test = zeros(1,N);
-show_rst = 1;
-
-if show_rst > 0
-    f1 = figure;
-    if show_rst > 1
-        f2 = figure;
+% generate middle results
+[crt_Su, crt_Se, crt_mean_a, haha, lala] = our_defense(features, labels, ori_labels, 1);
+crt_mu = statistic_mean(features(labels==0,:),crt_Su, crt_Se, mean(features));
+rst_Su = cell(9,9);
+rst_Se = cell(9,9);
+rst_idx = cell(9,9);
+for r = 1:9
+    for k = 1:9
+      [Su, Se, mean_a, class_score, gidx] = our_defense(features, labels, ori_labels, r*0.1);
+      rst_Su{r,k} = Su;
+      rst_Se{r,k} = Se;
+      rst_idx{r,k} = gidx;
     end
 end
-
-
-for i = 1:n
-% for i = 2803:n
-%     i = rank_l(j); 
-%     if labels(i) == 4772
-     if labels(i) == 0;
-        
-        
-        k = rank_l(i);
-        mid = mid_features(k,:);
-        
-        for j = 1:N
-            vec = features{j}(i,:);
-            test(1,j) = vec*mid'/norm(vec);
-        end
-     
-        if mean(test) < 1
-            i
-            cc = cc+1;
-            bad_list(cc,1) = i;
-
-            if show_rst > 0
-                figure(f1);
-                plot(x, test)
-                ylim([0,1])
-                if show_rst > 1
-                    figure(f2);
-                    im = imread(img_path{i});
-                    imshow(im);
-                end
-                pause;
-            end
-        end
-    end
-    
-end
-cc
-%%
-%check difference
-%bad_list - poisoned_list => diff_list
-
-diff_list = zeros(2,1);
-dk = 0;
-j = 1;
-
-n_p = 0;
-n_n = 0;
-for i=1:size(bad_list,1)
-    
-    while bad_list(i) > poisoned_list(j)
-        dk = dk+1;
-        diff_list(dk) = -poisoned_list(j);
-        n_n = n_n+1;
-        j = j+1;
-        if j > size(poisoned_list,1)
-            break;
-        end
-    end
-    
-    if j > size(poisoned_list,1)
-        break;
-    end
-    
-    if bad_list(i) == poisoned_list(j)
-        j = j+1;
-    else 
-        dk = dk+1;
-        diff_list(dk) = bad_list(i);
-        n_p = n_p+1;
+rst_mu = cell(9,9);
+for r = 1:9
+    for k = 1:9
+      idx = rst_idx{r,k};
+      X = features(idx,:);
+      Y = labels(idx,:);
+      rst_mu{r,k} = statistic_mean(X(Y==0,:),rst_Su{r,k}, rst_Se{r,k}, mean(X));
     end
 end
-
-for ii = i:size(bad_list,1)
-    dk = dk+1;
-    diff_list(dk) = bad_list(ii);
-    n_p = n_p+1;
-end
-%%
-% see the differences between benign and poisoned model
-load('benign_#51_bad.mat');
-benign_coss = coss;
-load('poisoned_normal_#51_bad.mat');
-poisoned_coss = coss;
-%%
-% see differences between curves
-N = 16;
-M = 256;
-n = size(coss,1);
-x = 1:N+1;
-for i = 1:n
-    
-    if idx_int(i) == 0 
-        continue;
-    end
-    
-    
-    display(['idx: ',num2str(i)])
-    display(['labels: ',num2str(benign_labels(i))])
-    display(['score: ',num2str(score(i))])
-    
-    benign_labels(i)
-    f1 = figure;
-    im = imread(img_path{i});
-    imshow(im);
-    
-    
-    f2 = figure;
-    plot(x,benign_coss(i,:));
-    hold on;
-    plot(x,poisoned_coss(i,:));
-    hold on;
-    
-    ylim([0,1]);
-    legend({'benign','poisoned','s_b','s_p'});
-    pause;
-    close(f1);
-    close(f2);
-end
-%%
-zuo = zeros(n,N);
-for j = 1:N
-    zuo(:,j) = benign_coss(:,j)-benign_coss(:,j+1);
-end
-MU = mean(zuo);
-SIGMA = cov(zuo);
-INV_SIGMA = inv(SIGMA);
-
-%%
-var_b = benign_coss(:,1:N)-repmat(benign_coss(:,N+1),[1,N]);
-MU = mean(var_b);
-SIGMA = cov(var_b);
-INV_SIGMA = inv(SIGMA);
-
-%%
-diff_coss = benign_coss-poisoned_coss;
-MU = mean(diff_coss);
-SIGMA = cov(diff_coss);
-INV_SIGMA = inv(SIGMA);
-%%
-p = zeros(n,1);
-for i = 1:n
-    dif = diff_coss(i,:);
-    p(i,1) = dif*INV_SIGMA*transpose(dif);
-end
-%%
-pb = zeros(n,1);
-pp = zeros(n,1);
-for i = 1:n
-    dif = poisoned_coss(i,1:N)-poisoned_coss(i,N+1) - MU;
-    pp(i,1) = dif*INV_SIGMA*transpose(dif);
-    dif = benign_coss(i,1:N)-benign_coss(i,N+1) - MU;
-    pb(i,1) = dif*INV_SIGMA*transpose(dif);
-end
-diff_p = abs(pb-pp);
-%%
-p_zuo = zeros(n,1);
-for i = 1:n
-    dif= zeros(1,N);
-    for j = 1:N
-        dif = poisoned_coss(i,j)-poisoned_coss(i,j+1);
-    end
-    dif = dif-MU;
-    pp(i,1) = dif*INV_SIGMA*transpose(dif);
-    
-    dif= zeros(1,N);
-    for j = 1:N
-        dif = benign_coss(i,j)-benign_coss(i,j+1);
-    end
-    dif = dif-MU;
-    pb(i,1) = dif*INV_SIGMA*transpose(dif);
-end
-diff_p = abs(pb-pp);
-
+save('mid_rst.mat','features','labels','crt_Su','crt_Se','rst_Su','rst_Se','rst_idx','rst_mu');
 %%
 
-ylim([-1,1]);
-hold on;
-plot(1:N,MU);
-hold on;
-%%
-%calc Su Se
-
-subm = coss(1:n,1:N);
-for i = 1:n
-    for j=1:N
-        subm(i,j) = poisoned_coss(i,j) - poisoned_coss(i,j+1);
+mu_dist = zeros(9,9);
+se_dist = zeros(9,9);
+for r= 1:9
+    for k = 1:9
+        dif = rst_mu{r,k}-crt_mu;
+        mu_dist(r,k) = norm(dif);
+        dif = crt_Se-rst_Se{r,k};
+        se_dist(r,k) = norm(dif(:));
     end
 end
-
-covm = zeros(N,N);
-for i = 1:n
-    z = subm(i,1:N);
-    cc = z'*z;
-    covm = covm+cc;
-end
-covm = covm./(n-1);
-mv = mean(subm);
-covm = covm-mv'*mv;
-inv_covm = inv(covm);
 %%
-%calc mahalanobis distance 
-ma_dist = zeros(n,1);
-for i =1:n
-    z = subm(i,1:N);
-    z = z-mv;
-    ma_dist(i,1) = z*inv_covm*z';
-end
-
-%%
-[Su, Se, mean_a] = global_model(features, labels);
+r = 1; k = 1;
+Se = rst_Se{r,k};
+mu = rst_mu{r,k};
 inv_Sigma = inv(Se);
-idx = labels==0;
-mu = statistic_mean(features(idx,:), Su, Se, mean_a);
-save('normal_0.9_data.mat','inv_Sigma','mu');
+save('normal_0.1_data.mat','inv_Sigma','mu');
 % save('normal_1.0_data.mat','inv_Sigma','mu');
 % save('good_rst_poisoned_normal_lu_#51_8993','good_Su','good_Se','good_u','good_e');
 %%
-hist(score,10000)    
-idx_zero = (labels==0);
-idx_int = (score<0);
-display(['# hits: ', num2str(sum(idx_zero.*idx_int))])
-display(['# prob: ', num2str(sum(idx_int))])
-display(['# true: ', num2str(sum(idx_zero))])
-%%
-[dist_Se, norm_e, dist_u, mean_f, dist_r] = test_Se(good_u,good_e,labels,Su,Se);
-hist(dist_Se,10000) 
-%%
-[ class_score, u1, u2, split_rst] = local_model(features, labels, Su, Se, mean_a);
-x = class_score(:,1);
-y = class_score(:,2)
-figure;
-plot(x, y/max(y))
-%%
-a = calc_anomaly_index(show_score)
-plot(a);
+rst = zeros(9,9);
+for r = 1:9
+    for k = 1:9
+      [Su, Se, mean_a, class_score] = our_defense(features, labels, ori_labels, r*0.1);
+      rst(r,k) = max(class_score(:));
+    end
+end
 
 %%
 % Hz test
@@ -637,7 +298,7 @@ xticklabels({'GTSRB','MegaFace','ImageNet'})
 load('normal_data.mat');
 ori_mu = mu;
 ori_inv = inv_Sigma;
-for i = 1:9
+for i = 1:1
     disp(i);
     mat_name = ['normal_0.',num2str(i),'_data.mat'];
     load(mat_name);
