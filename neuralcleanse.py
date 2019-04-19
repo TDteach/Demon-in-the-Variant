@@ -449,6 +449,50 @@ def clean_mask_folder(mask_folder):
 
   print(ld_paths)
 
+def pull_out_trigger(model_path, data_dir, model_name = 'gtsrb'):
+  options = Options
+
+  options.model_name = model_name
+  options.data_dir = data_dir
+  options.batch_size = 1
+  options.num_epochs = 1
+  options.net_mode = 'backdoor_def'
+  options.load_mode = 'all'
+  options.fix_level = 'all'
+  options.build_level = 'mask_only'
+  options.selected_training_labels = None
+
+  model, dataset, img_op, lb_op, out_op, aux_out_op = get_output(options, model_name=model_name)
+  model.add_backbone_saver()
+
+  config = tf.ConfigProto()
+  config.gpu_options.allow_growth = True
+
+  import cv2
+
+  init_op = tf.global_variables_initializer()
+  local_var_init_op = tf.local_variables_initializer()
+  table_init_ops = tf.tables_initializer()  # iterator_initilizor in here
+  with tf.Session(config=config) as sess:
+    sess.run(init_op)
+    sess.run(local_var_init_op)
+    sess.run(table_init_ops)
+
+    model.load_backbone_model(sess, model_path)
+    pattern, mask = sess.run([out_op, aux_out_op])
+    pattern = (pattern[0]+1)/2
+    mask = mask[0]
+
+    show_name = '%d_pattern.png'%k
+    out_pattern = pattern*255
+    cv2.imwrite(show_name, out_pattern.astype(np.uint8))
+    show_name = '%d_mask.png'%k
+    out_mask = mask*255
+    cv2.imwrite(show_name, out_mask.astype(np.uint8))
+    show_name = '%d_color.png'%k
+    out_color = pattern*mask*255
+    cv2.imwrite(show_name, out_color.astype(np.uint8))
+
 def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb'):
   options = Options
 
