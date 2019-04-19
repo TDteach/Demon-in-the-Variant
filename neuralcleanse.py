@@ -17,6 +17,7 @@ from model_builder import Model_Builder
 
 import numpy as np
 import random
+import math
 
 
 def get_data(options, dataset=None, model_name='gtsrb'):
@@ -643,6 +644,8 @@ def generate_predictions(model_path, data_dir, data_mode='poison',subject_labels
   lb_matrix = None
   t_e = 0
 
+  num_iters = math.ceil(dataset.num_examples_per_epoch() / options.batch_size)
+
   config = tf.ConfigProto()
   config.gpu_options.allow_growth = True
 
@@ -654,7 +657,7 @@ def generate_predictions(model_path, data_dir, data_mode='poison',subject_labels
     sess.run(local_var_init_op)
     sess.run(table_init_ops)
     model.load_backbone_model(sess, model_path)
-    for i in range(dataset.num_examples_per_epoch() // options.batch_size):
+    for i in range(num_iters):
       labels, embeddings = sess.run([lb_op, out_op])
       if emb_matrix is None:
         emb_matrix = embeddings
