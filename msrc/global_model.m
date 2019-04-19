@@ -1,22 +1,14 @@
 function [Su, Se, mean_a] = global_model(fM, lbs, Su, Se)
-    idx = (lbs <= 10);
-    aX = fM(idx,:);
-    aY = lbs(idx,:);
+%     idx = (lbs > 3);
+%     fM = fM(idx,:);
+%     lbs = lbs(idx,:);
 
-    idx = (lbs > 10);
-    bX = fM(idx,:);
-    bY = lbs(idx,:);
     
-    N = size(bY,1);
-    n = floor(N*0.9);
-    idx = randperm(N,n);
-    bX = bX(idx,:);
-    bY = bY(idx,:);
-    
-    fM = [aX;bX];
-    lbs = [aY;bY];
-    
-    
+%     N = size(lbs,1);
+%     n = floor(N*0.1);
+%     idx = randperm(N,n);
+%     fM = fM(idx,:);
+%     lbs = lbs(idx,:);
     
     %%==========================%%
     
