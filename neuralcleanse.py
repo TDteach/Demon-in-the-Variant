@@ -484,6 +484,7 @@ def pull_out_trigger(model_path, data_dir, model_name = 'gtsrb'):
     pattern = (pattern[0]+1)/2
     mask = mask[0]
 
+    k = 0
     show_name = '%d_pattern.png'%k
     out_pattern = pattern*255
     cv2.imwrite(show_name, out_pattern.astype(np.uint8))
