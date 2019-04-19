@@ -2,8 +2,8 @@ addpath(genpath('msrc'))
 %%
 N = 16;
 M = 256;
-fo = '/home/tangd/workspace/backdoor/npys_gtsrb/benign/';
-% fo = '/home/tangd/workspace/backdoor/';
+% fo = '/home/tangd/workspace/backdoor/npys_gtsrb/benign/';
+fo = '/home/tangd/workspace/backdoor/';
 features = readNPY([fo,'out_X.npy']);
 labels = readNPY([fo,'out_labels.npy']);
 ori_labels = readNPY([fo,'ori_labels.npy']);
@@ -78,6 +78,51 @@ save('normal_0.1_data.mat','inv_Sigma','mu');
 % save('normal_1.0_data.mat','inv_Sigma','mu');
 % save('good_rst_poisoned_normal_lu_#51_8993','good_Su','good_Se','good_u','good_e');
 %%
+fo = '/home/tangd/workspace/backdoor/';
+features = readNPY([fo,'out_X.npy']);
+labels = readNPY([fo,'out_labels.npy']);
+ori_labels = readNPY([fo,'ori_labels.npy']);
+
+nl = size(labels,1);
+no = size(ori_labels,1);
+if nl > no
+    labels = labels(1:no,:);
+end
+
+gidx = (labels==ori_labels);
+gX = features(gidx,:);
+gY = labels(gidx,:);
+gidx = ~rst_idx{1,1};
+gX = gX(gidx,:);
+gY = gY(gidx,:);
+[Su, Se, mean_a] = global_model(gX, gY);
+
+lidx = (labels<10);
+lX = features(lidx,:);
+lY = labels(lidx,:);
+[ class_score, u1, u2, split_rst] = local_model(lX, lY, Su, Se, mean_a);
+    
+x = class_score(:,1);
+y = class_score(:,2)
+figure;
+plot(x, y/max(y));
+hold on;
+a = calc_anomaly_index(y);
+plot(x, a);
+figure;
+n = size(u1,1);
+dis_u = zeros(n,1);
+F = inv(Se);
+for i=1:n
+    d = u1(i,:)-u2(i,:);
+    dis_u(i,1) = d * F * d';
+end
+b = log(det(Se));
+dis_u = dis_u+b;
+plot(x,dis_u);
+
+%%
+
 rst = zeros(9,9);
 for r = 1:9
     for k = 1:9

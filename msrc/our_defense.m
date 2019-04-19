@@ -1,11 +1,19 @@
-function [Su, Se, mean_a, a, gidx] = our_defense(features, labels, ori_labels, known_ratio)
+function [Su, Se, mean_a, a, gidx] = our_defense(features, labels, ori_labels, known_ratio, gidx)
 %OUR_DEFENSE Summary of this function goes here
 %   Detailed explanation goes here
 
-    gidx = (labels==ori_labels);
-    c = rand(size(gidx));
-    gidx = gidx.*c;
-    gidx = gidx>(1-known_ratio);
+    switch nargin
+        case 2
+            gidx = (labels>=0);
+        case 3
+            gidx = (labels==ori_labels);
+        case 4
+            gidx = (labels==ori_labels);
+            c = rand(size(gidx));
+            gidx = gidx.*c;
+            gidx = gidx>(1-known_ratio);
+    end
+    
     
 %     gidx = (labels>=5);
     
@@ -14,7 +22,6 @@ function [Su, Se, mean_a, a, gidx] = our_defense(features, labels, ori_labels, k
     [Su, Se, mean_a] = global_model(gX, gY);
     
     a = 0;
-    return
     
     lidx = (labels<10);
     lX = features(lidx,:);
@@ -23,12 +30,12 @@ function [Su, Se, mean_a, a, gidx] = our_defense(features, labels, ori_labels, k
     
     x = class_score(:,1);
     y = class_score(:,2)
-%     figure;
-%     plot(x, y/max(y));
-%     hold on;
+    figure;
+    plot(x, y/max(y));
+    hold on;
     a = calc_anomaly_index(y);
-%     plot(x, a);
-%     figure;
+    plot(x, a);
+    figure;
     n = size(u1,1);
     dis_u = zeros(n,1);
     F = inv(Se);
@@ -38,6 +45,6 @@ function [Su, Se, mean_a, a, gidx] = our_defense(features, labels, ori_labels, k
     end
     b = log(det(Se));
     dis_u = dis_u+b;
-%     plot(x,dis_u);
+    plot(x,dis_u);
 end
 

@@ -493,6 +493,14 @@ def pull_out_trigger(model_path, data_dir, model_name = 'gtsrb'):
     out_color = pattern*mask*255
     cv2.imwrite(show_name, out_color.astype(np.uint8))
 
+def get_last_checkpoint_in_folder(folder_path):
+  f_p = os.path.join(folder_path, 'checkpoint')
+  with open(f_p, 'r') as f:
+    for li in f:
+      ckpt_name = li.split('"')[-2]
+      ld_p = os.path.join(folder_path, ckpt_name)
+      return ld_p
+
 def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb'):
   options = Options
 
@@ -518,13 +526,7 @@ def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb'):
       tgt_id = int(tt)
     except:
       continue
-    f_p = os.path.join(root_folder, d, 'checkpoint')
-    with open(f_p, 'r') as f:
-      for li in f:
-        ckpt_name = li.split('"')[-2]
-        ld_p = os.path.join(root_folder, d, ckpt_name)
-        ld_paths[tgt_id] = ld_p
-        break
+    ld_paths[tgt_id] = get_last_checkpoint_in_folder(os.path.join(root_folder,d))
 
   print(ld_paths)
 
@@ -678,6 +680,39 @@ def inspect_checkpoint(model_path, all_tensors=True):
   from tensorflow.python.tools import inspect_checkpoint as chkp
   chkp.print_tensors_in_checkpoint_file(model_path, tensor_name='v0/cg/affine0/', all_tensors=all_tensors, all_tensor_names=True)
 
+
+def reset_all():
+  tf.reset_default_graph()
+
+
+def generate_evade_predictions():
+  home_dir = '/home/tangd/'
+  model_name='gtsrb'
+  model_folder = home_dir+'data/checkpoint/'
+  data_dir = home_dir+'data/GTSRB/train/Images/'
+  subject_labels=[[1]]
+  object_label=[0]
+  cover_labels=[[1]]
+  pattern_file=[(home_dir + 'workspace/backdoor/0_pattern.png', home_dir+'workspace/backdoor/0_mask.png')]
+
+  os.system('rm -rf '+home_dir+'data/checkpoint')
+  os.system('cp benchmarks/config.py.evade banchmarks/config.py')
+  os.system('python3 benchmarks/train_gtsrb.py')
+
+
+  model_path = get_last_checkpoint_in_folder(model_folder)
+  pull_out_trigger(model_path, data_dir, model_name)
+  reset_all()
+
+  os.system('rm -rf '+home_dir+'data/checkpoint')
+  os.system('cp benchmarks/config.py.poison banchmarks/config.py')
+  os.system('python3 benchmarks/train_gtsrb.py')
+
+  model_path = get_last_checkpoint_in_folder(model_folder)
+  generate_predictions(model_path,data_dir,data_mode='poison',subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels, pattern_file=pattern_file)
+  reset_all()
+
+
 if __name__ == '__main__':
   # inspect_checkpoint('/home/tdteach/data/benchmark_models/poisoned_bb',False)
   # inspect_checkpoint('/home/tdteach/data/checkpoint/model.ckpt-0',False)
@@ -686,9 +721,9 @@ if __name__ == '__main__':
   # clean_mask_folder(mask_folder='/home/tdteach/data/mask_test_gtsrb_benign/')
   # obtain_masks_for_labels([0])
 
-  home_dir = '/home/tdteach/'
+  home_dir = '/home/tangd/'
   model_name='gtsrb'
-  model_folder = home_dir+'data/'
+  model_folder = home_dir+'data/mask_test_gtsrb_benign/'
   # model_path = model_folder+'checkpoint/model.ckpt-6483'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/_checkpoint/model.ckpt-3073'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
@@ -704,8 +739,42 @@ if __name__ == '__main__':
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
   #                        home_dir + 'workspace/backdoor/normal_md.png',
   #                        home_dir + 'workspace/backdoor/uniform.png']
-  # show_mask_norms(mask_folder=model_folder, data_dir=data_dir,model_name=model_name)
-  generate_predictions(model_path,data_dir,data_mode='normal',subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels, pattern_file=pattern_file)
+  show_mask_norms(mask_folder=model_folder, data_dir=data_dir,model_name=model_name)
+  # generate_predictions(model_path,data_dir,data_mode='normal',subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels, pattern_file=pattern_file)
+  # test_blended_input(model_path,data_dir)
+  # test_poison_performance(model_path, data_dir, subject_labels=subject_labels, object_label=object_label, cover_labels=cover_labels, pattern_file=pattern_file)
+  # test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
+  # test_mask_efficiency(model_path, testset_dir=testset_dir, global_label=0)
+  d
+
+if __name__ == '__main__':
+  # inspect_checkpoint('/home/tdteach/data/benchmark_models/poisoned_bb',False)
+  # inspect_checkpoint('/home/tdteach/data/checkpoint/model.ckpt-0',False)
+  # inspect_checkpoint('/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/0_checkpoint/model.ckpt-3073',False)
+  # exit(0)
+  # clean_mask_folder(mask_folder='/home/tdteach/data/mask_test_gtsrb_benign/')
+  # obtain_masks_for_labels([0])
+
+  home_dir = '/home/tangd/'
+  model_name='gtsrb'
+  model_folder = home_dir+'data/mask_test_gtsrb_benign/'
+  # model_path = model_folder+'checkpoint/model.ckpt-6483'
+  # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/_checkpoint/model.ckpt-3073'
+  # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
+  # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
+  model_path = home_dir+'data/gtsrb_models/benign_all'
+  data_dir = home_dir+'data/GTSRB/train/Images/'
+  testset_dir= home_dir+'data/GTSRB/test/Images/'
+  subject_labels=[[1]]
+  object_label=[0]
+  cover_labels=[[1]]
+  pattern_file = None
+  # pattern_file=[(home_dir + 'workspace/backdoor/0_pattern.png', home_dir+'workspace/backdoor/0_mask.png')]
+  #                        home_dir + 'workspace/backdoor/normal_lu.png',
+  #                        home_dir + 'workspace/backdoor/normal_md.png',
+  #                        home_dir + 'workspace/backdoor/uniform.png']
+  show_mask_norms(mask_folder=model_folder, data_dir=data_dir,model_name=model_name)
+  # generate_predictions(model_path,data_dir,data_mode='normal',subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels, pattern_file=pattern_file)
   # test_blended_input(model_path,data_dir)
   # test_poison_performance(model_path, data_dir, subject_labels=subject_labels, object_label=object_label, cover_labels=cover_labels, pattern_file=pattern_file)
   # test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
