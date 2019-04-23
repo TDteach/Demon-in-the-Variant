@@ -738,25 +738,28 @@ if __name__ == '__main__':
 
   home_dir = '/home/tdteach/'
   model_name='gtsrb'
-  model_folder = home_dir+'data/mask_test_gtsrb_benign/'
-  # model_path = model_folder+'checkpoint/model.ckpt-6483'
+  # model_folder = home_dir+'data/mask_test_gtsrb_benign/'
+  model_folder = home_dir+'data/checkpoint/'
+  # model_path = model_folder+'checkpoint/'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/_checkpoint/model.ckpt-3073'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
   # model_path = home_dir+'data/gtsrb_models/benign_all'
-  model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
+  # model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
+  model_path = get_last_checkpoint_in_folder(model_folder)
   data_dir = home_dir+'data/GTSRB/train/Images/'
   testset_dir= home_dir+'data/GTSRB/test/Images/'
   subject_labels=[[1]]
   object_label=[0]
   cover_labels=[[1]]
+  outfile_prefix = 'init'
   pattern_file = None
   # pattern_file=[(home_dir + 'workspace/backdoor/0_pattern.png', home_dir+'workspace/backdoor/0_mask.png')]
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
   #                        home_dir + 'workspace/backdoor/normal_md.png',
   #                        home_dir + 'workspace/backdoor/uniform.png']
   # show_mask_norms(mask_folder=model_folder, data_dir=data_dir,model_name=model_name)
-  generate_predictions(model_path,testset_dir,data_mode='normal',subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels, pattern_file=pattern_file, prefix='test')
+  generate_predictions(model_path,data_dir,data_mode='poison',subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels, pattern_file=pattern_file, prefix=outfile_prefix)
   # test_blended_input(model_path,data_dir)
   # test_poison_performance(model_path, data_dir, subject_labels=subject_labels, object_label=object_label, cover_labels=cover_labels, pattern_file=pattern_file)
   # test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
