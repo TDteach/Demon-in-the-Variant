@@ -10,6 +10,7 @@ import benchmark_cnn
 
 
 from config import Options
+from utils import *
 import train_gtsrb
 # import train_megaface
 # import train_imagenet
@@ -80,6 +81,8 @@ def get_output(options, dataset=None, model_name='gtsrb'):
     bld_rst = model.build_network(input_list,phase_train=False,nclass=dataset.num_classes)
 
   return model, dataset, img_op, label_op, bld_rst.logits, bld_rst.extra_info
+
+
 
 def generate_sentinet_inputs(a_matrix, a_labels, b_matrix, b_labels, a_is='infected'):
 
@@ -288,10 +291,8 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
 
 
 
-def test_poison_performance(model_path, data_dir, object_label, subject_labels=None, cover_labels=[[]], pattern_file=None):
-  options = Options
+def test_poison_performance(options, model_name):
   options.shuffle=False
-  options.data_dir = data_dir
   options.batch_size = 100
   options.num_epochs = 1
   options.net_mode = 'normal'
@@ -300,10 +301,7 @@ def test_poison_performance(model_path, data_dir, object_label, subject_labels=N
   options.fix_level = 'all'
   options.build_level = 'logits'
   options.poison_fraction = 1
-  options.poison_subject_labels = subject_labels
-  options.poison_object_label = object_label
-  options.poison_cover_labels = cover_labels
-  options.poison_pattern_file = pattern_file
+  subject_labels = options.poison_subject_labels = subject_labels
   if subject_labels is not None:
     sl = []
     for s in subject_labels:
@@ -332,14 +330,17 @@ def test_poison_performance(model_path, data_dir, object_label, subject_labels=N
     sess.run(init_op)
     sess.run(local_var_init_op)
     sess.run(table_init_ops)
-    model.load_backbone_model(sess, model_path)
+    model.load_backbone_model(sess, options.backbone_model_path)
     for i in range(run_iters):
       labels, logits = sess.run([lb_op, out_op])
       pds = np.argmax(logits, axis=1)
       acc += sum(np.equal(pds, labels))
       t_e += options.batch_size
+  acc = acc/t_e
   print('===Results===')
-  print('poison acc: %.2f%%' % (acc*100/t_e))
+  print('poison acc: %.2f%%' % (acc*100))
+
+  return acc
 
 def test_mask_efficiency(model_path, testset_dir, global_label, selected_labels=None):
   options = Options
@@ -500,14 +501,6 @@ def pull_out_trigger(model_path, data_dir, model_name = 'gtsrb'):
     print('save image to '+show_name)
     out_color = pattern*mask*255
     cv2.imwrite(show_name, out_color.astype(np.uint8))
-
-def get_last_checkpoint_in_folder(folder_path):
-  f_p = os.path.join(folder_path, 'checkpoint')
-  with open(f_p, 'r') as f:
-    for li in f:
-      ckpt_name = li.split('"')[-2]
-      ld_p = os.path.join(folder_path, ckpt_name)
-      return ld_p
 
 def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb'):
   options = Options
@@ -689,10 +682,6 @@ def generate_predictions(model_path, data_dir, data_mode='poison',subject_labels
   np.save(out_name, labels)
   print('write original labels to '+out_name)
 
-def inspect_checkpoint(model_path, all_tensors=True):
-  from tensorflow.python.tools import inspect_checkpoint as chkp
-  chkp.print_tensors_in_checkpoint_file(model_path, tensor_name='v0/cg/affine0/', all_tensors=all_tensors, all_tensor_names=True)
-
 
 def reset_all():
   tf.reset_default_graph()
@@ -725,6 +714,35 @@ def generate_evade_predictions():
   generate_predictions(model_path,data_dir,data_mode='poison',subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels, pattern_file=pattern_file)
   reset_all()
 
+
+def investigate_number_source_label(options, model_name):
+  options.subject_labels=[[]]
+  options.object_label=[0]
+  options.cover_labels=[[]]
+
+  out_json_file = 'temp_config.json'
+
+  max_n = 10
+  acc = [0]*max_n
+
+  for i in range(max_n):
+    options.load_mode = 'normal'
+    options.subject_labels[0].append(i+1)
+    save_options_to_file(options, out_json_file)
+
+    os.system('rm -rf '+options.checkpoint_folder)
+    os.system('python3 benchmarks/train_gtsrb.py --json_config='+out_json_file)
+
+    options.backbone_model_path = get_last_checkpoint_in_folder(options.checkpoint_folder)
+    acc[i] = test_poison_performance(options, model_name)
+    reset_all()
+
+  print('===Results===')
+  np.save('acc.npy', acc)
+  print('write acc array to acc.npy')
+
+
+
 if __name__ == '__main__':
   # inspect_checkpoint('/home/tdteach/data/benchmark_models/poisoned_bb',False)
   # inspect_checkpoint('/home/tdteach/data/checkpoint/model.ckpt-0',False)
@@ -736,8 +754,10 @@ if __name__ == '__main__':
   #generate_evade_predictions()
   #exit(0)
 
-  home_dir = '/home/tdteach/'
+  options = Options
+
   model_name='gtsrb'
+  options.home_dir = '/home/tdteach/'
   # model_folder = home_dir+'data/mask_test_gtsrb_benign/'
   model_folder = home_dir+'data/checkpoint/'
   # model_path = model_folder+'checkpoint/'
@@ -747,20 +767,22 @@ if __name__ == '__main__':
   # model_path = home_dir+'data/gtsrb_models/benign_all'
   # model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
   model_path = get_last_checkpoint_in_folder(model_folder)
-  data_dir = home_dir+'data/GTSRB/train/Images/'
+  options.backbone_model_path = model_path
+  options.data_dir = home_dir+'data/GTSRB/train/Images/'
   testset_dir= home_dir+'data/GTSRB/test/Images/'
-  subject_labels=[[1]]
-  object_label=[0]
-  cover_labels=[[1]]
+  options.subject_labels=[[1]]
+  options.object_label=[0]
+  options.cover_labels=[[1]]
   outfile_prefix = 'init'
-  pattern_file = None
+  options.pattern_file = None
   # pattern_file=[(home_dir + 'workspace/backdoor/0_pattern.png', home_dir+'workspace/backdoor/0_mask.png')]
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
   #                        home_dir + 'workspace/backdoor/normal_md.png',
   #                        home_dir + 'workspace/backdoor/uniform.png']
   # show_mask_norms(mask_folder=model_folder, data_dir=data_dir,model_name=model_name)
-  generate_predictions(model_path,data_dir,data_mode='poison',subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels, pattern_file=pattern_file, prefix=outfile_prefix)
+  # generate_predictions(model_path,data_dir,data_mode='poison',subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels, pattern_file=pattern_file, prefix=outfile_prefix)
   # test_blended_input(model_path,data_dir)
   # test_poison_performance(model_path, data_dir, subject_labels=subject_labels, object_label=object_label, cover_labels=cover_labels, pattern_file=pattern_file)
   # test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
   # test_mask_efficiency(model_path, testset_dir=testset_dir, global_label=0)
+  investigate_number_source_label(options):
