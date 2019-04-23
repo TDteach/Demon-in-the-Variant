@@ -1,4 +1,4 @@
-function [Su, Se, mean_a] = global_model(fM, lbs, Su, Se)
+function [Su, Se, mean_a, u_m] = global_model(fM, lbs, Su, Se)
 %     idx = (lbs > 3);
 %     fM = fM(idx,:);
 %     lbs = lbs(idx,:);

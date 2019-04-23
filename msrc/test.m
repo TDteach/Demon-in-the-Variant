@@ -34,14 +34,24 @@ end
 fclose(fid);
 %%
 % generate middle results
-[crt_Su, crt_Se, crt_mean_a, haha, lala] = our_defense(features, labels, ori_labels, 1);
-crt_mu = statistic_mean(features(labels==0,:),crt_Su, crt_Se, mean(features));
+fo = '/home/tangd/workspace/backdoor/';
+features = readNPY([fo,'out_X.npy']);
+labels = readNPY([fo,'out_labels.npy']);
+ori_labels = readNPY([fo,'ori_labels.npy']);
+
+[crt_Su, crt_Se, crt_mean_a] = global_model(features, labels);
+crt_mu = statistic_mean(features(labels==0,:),crt_Su, crt_Se, crt_mean_a);
+
 rst_Su = cell(9,9);
 rst_Se = cell(9,9);
 rst_idx = cell(9,9);
 for r = 1:9
     for k = 1:9
-      [Su, Se, mean_a, class_score, gidx] = our_defense(features, labels, ori_labels, r*0.1);
+      gidx = (labels==ori_labels);
+      c = rand(size(gidx));
+      gidx = gidx.*c;
+      gidx = gidx>(1-r*0.1);
+      [Su, Se, mean_a] = global_model(features(gidx,:), labels(gidx,:));
       rst_Su{r,k} = Su;
       rst_Se{r,k} = Se;
       rst_idx{r,k} = gidx;
@@ -56,9 +66,8 @@ for r = 1:9
       rst_mu{r,k} = statistic_mean(X(Y==0,:),rst_Su{r,k}, rst_Se{r,k}, mean(X));
     end
 end
-save('mid_rst.mat','features','labels','crt_Su','crt_Se','rst_Su','rst_Se','rst_idx','rst_mu');
+save('mid_rst.mat','features','labels','crt_Su','crt_Se','crt_mu','rst_Su','rst_Se','rst_idx','rst_mu');
 %%
-
 mu_dist = zeros(9,9);
 se_dist = zeros(9,9);
 for r= 1:9
@@ -70,33 +79,38 @@ for r= 1:9
     end
 end
 %%
-r = 1; k = 1;
+Se = crt_Se;
+mu = crt_mu;
+inv_Sigma = inv(Se);
+save(['normal_1.0_data.mat'],'inv_Sigma','mu');
+%%
+r = 9; k = 1;
 Se = rst_Se{r,k};
 mu = rst_mu{r,k};
 inv_Sigma = inv(Se);
-save('normal_0.1_data.mat','inv_Sigma','mu');
+save(['normal_0.',num2str(r),'_data.mat'],'inv_Sigma','mu');
 % save('normal_1.0_data.mat','inv_Sigma','mu');
 % save('good_rst_poisoned_normal_lu_#51_8993','good_Su','good_Se','good_u','good_e');
 %%
 fo = '/home/tangd/workspace/backdoor/';
-features = readNPY([fo,'out_X.npy']);
-labels = readNPY([fo,'out_labels.npy']);
-ori_labels = readNPY([fo,'ori_labels.npy']);
+prefix = 'init';
+features = readNPY([fo,prefix,'_X.npy']);
+labels = readNPY([fo,prefix,'_labels.npy']);
+ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
 
-nl = size(labels,1);
-no = size(ori_labels,1);
-if nl > no
-    labels = labels(1:no,:);
-end
-
-gidx = (labels==ori_labels);
+% gidx = (labels==ori_labels);
+gidx = (labels>=0);
+c = rand(size(gidx));
+gidx = gidx.*c;
+gidx = gidx>(1-0.8);
 gX = features(gidx,:);
 gY = labels(gidx,:);
-gidx = ~rst_idx{1,1};
-gX = gX(gidx,:);
-gY = gY(gidx,:);
-[Su, Se, mean_a] = global_model(gX, gY);
-
+% gidx = ~rst_idx{r,k};
+% gidx = (gY >= 10);
+% gX = gX(gidx,:);
+% gY = gY(gidx,:);
+[Su, Se, mean_a, mean_l] = global_model(gX, gY);
+%%
 lidx = (labels<10);
 lX = features(lidx,:);
 lY = labels(lidx,:);
@@ -339,7 +353,7 @@ plot(3,no_i(1),'Xr','MarkerSize',20);
 
 xticklabels({'GTSRB','MegaFace','ImageNet'})
 %%
-%show difference from partiail known data
+%show difference from partially known data
 load('normal_data.mat');
 ori_mu = mu;
 ori_inv = inv_Sigma;
@@ -352,6 +366,35 @@ for i = 1:1
     d = ori_inv - inv_Sigma;
     disp(norm(d));
 end
+%%
+% extensin to online detection
+fo = '/home/tangd/workspace/backdoor/';
+prefix = 'test';
+features = readNPY([fo,prefix,'_X.npy']);
+labels = readNPY([fo,prefix,'_labels.npy']);
+ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
 
+gidx = (labels==ori_labels);
+gX = features(gidx,:);
+gY = labels(gidx,:);
+[Su, Se, mean_a, mean_l] = global_model(gX, gY);
+
+fo = '/home/tangd/workspace/backdoor/';
+prefix = 'out';
+features = readNPY([fo,prefix,'_X.npy']);
+labels = readNPY([fo,prefix,'_labels.npy']);
+ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
+
+inv_Se = inv(Se);
+[N,M] = size(features);
+dis = zeros(N,1);
+for i = 1:N
+    k = labels(i)+1;
+    vec = features(i,:) - mean_l(k,:);
+    dis(i,1) = vec*inv_Se*vec';
+end
+y = labels==ori_labels;
+[tpr, fpr, thr] = roc(y', -dis');
+plot(fpr,tpr);
 
 

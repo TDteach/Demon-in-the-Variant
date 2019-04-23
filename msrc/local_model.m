@@ -172,7 +172,7 @@ function [z1, u1, u2, sc] = find_LDA_split(X, Su, Se)
         sc = sc-2*e1*F*e2';
     end
     
-    sc = sc;
+    sc = 2*sc-log(N)*(M+M*M);
        
 end
 
