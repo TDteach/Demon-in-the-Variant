@@ -23,7 +23,10 @@ import math
 def get_data(options, dataset=None, model_name='gtsrb'):
   if dataset is None:
     if 'gtsrb' == model_name:
-      dataset = train_gtsrb.GTSRBDataset(options)
+      if 'test' in options.data_dir:
+        dataset = train_gtsrb.GTSRBTestDataset(options)
+      else:
+        dataset = train_gtsrb.GTSRBDataset(options)
     elif 'resnet101' in model_name:
       dataset = train_megaface.MegaFaceDataset(options)
     elif 'resnet50' == model_name:
@@ -622,7 +625,7 @@ def obtain_masks_for_labels(labels):
     os.system('python3 benchmarks/train_gtsrb.py --global_label=%d --optimizer=adam --weight_decay=0 --init_learning_rate=0.05' % lb)
     os.system('mv /home/tdteach/data/checkpoint /home/tdteach/data/%d_checkpoint' % lb)
 
-def generate_predictions(model_path, data_dir, data_mode='poison',subject_labels=[None], object_label=[0], cover_labels=[None], pattern_file=None, build_level='embeddings'):
+def generate_predictions(model_path, data_dir, data_mode='poison',subject_labels=[None], object_label=[0], cover_labels=[None], pattern_file=None, build_level='embeddings',prefix='out'):
   options = Options
 
   options.data_dir = data_dir
@@ -672,17 +675,19 @@ def generate_predictions(model_path, data_dir, data_mode='poison',subject_labels
         lb_matrix = np.concatenate((lb_matrix, labels))
 
   print('===Results===')
-  np.save('out_X.npy', emb_matrix[:n,:])
-  print('write embeddings to out_X.npy')
-  np.save('out_labels.npy', lb_matrix[:n])
-  print('write labels to out_labels.npy')
+  out_name = prefix+'_X.npy'
+  np.save(out_name, emb_matrix[:n,:])
+  print('write embeddings to '+out_name)
+  out_name = prefix+'_labels.npy'
+  np.save(out_name, lb_matrix[:n])
+  print('write labels to '+out_name)
+  out_name = prefix+'_ori_labels.npy'
   if data_mode == 'poison':
     labels = dataset.ori_labels
-    np.save('ori_labels.npy', labels)
-    print('write original labels to ori_labels.npy')
   else:
-    np.save('ori_labels.npy', lb_matrix[:n])
-    print('write original labels to ori_labels.npy')
+    labels = lb_matrix[:n]
+  np.save(out_name, labels)
+  print('write original labels to '+out_name)
 
 def inspect_checkpoint(model_path, all_tensors=True):
   from tensorflow.python.tools import inspect_checkpoint as chkp
@@ -733,24 +738,28 @@ if __name__ == '__main__':
 
   home_dir = '/home/tdteach/'
   model_name='gtsrb'
-  model_folder = home_dir+'data/mask_test_gtsrb_benign/'
-  # model_path = model_folder+'checkpoint/model.ckpt-6483'
+  # model_folder = home_dir+'data/mask_test_gtsrb_benign/'
+  model_folder = home_dir+'data/checkpoint/'
+  # model_path = model_folder+'checkpoint/'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/_checkpoint/model.ckpt-3073'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
-  model_path = home_dir+'data/gtsrb_models/benign_all'
+  # model_path = home_dir+'data/gtsrb_models/benign_all'
+  # model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
+  model_path = get_last_checkpoint_in_folder(model_folder)
   data_dir = home_dir+'data/GTSRB/train/Images/'
   testset_dir= home_dir+'data/GTSRB/test/Images/'
   subject_labels=[[1]]
   object_label=[0]
   cover_labels=[[1]]
+  outfile_prefix = 'init'
   pattern_file = None
   # pattern_file=[(home_dir + 'workspace/backdoor/0_pattern.png', home_dir+'workspace/backdoor/0_mask.png')]
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
   #                        home_dir + 'workspace/backdoor/normal_md.png',
   #                        home_dir + 'workspace/backdoor/uniform.png']
   # show_mask_norms(mask_folder=model_folder, data_dir=data_dir,model_name=model_name)
-  generate_predictions(model_path,data_dir,data_mode='normal',subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels, pattern_file=pattern_file)
+  generate_predictions(model_path,data_dir,data_mode='poison',subject_labels=subject_labels,object_label=object_label,cover_labels=cover_labels, pattern_file=pattern_file, prefix=outfile_prefix)
   # test_blended_input(model_path,data_dir)
   # test_poison_performance(model_path, data_dir, subject_labels=subject_labels, object_label=object_label, cover_labels=cover_labels, pattern_file=pattern_file)
   # test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
