@@ -14,6 +14,7 @@
 
 import numpy as np
 import pylab
+import random
 
 
 def Hbeta(D=np.array([]), beta=1.0):
@@ -186,16 +187,42 @@ if __name__ == "__main__":
     # X = np.load("benign_X.npy")
     # labels = np.load("benign_labels.npy")
     #
-    X = np.load("poisoned_X.npy")
-    labels = np.load("poisoned_labels.npy")
+    prefix='out'
+    X = np.load(prefix+'_X.npy')
+    labels = np.load(prefix+"_labels.npy")
+    ori_labels = np.load(prefix+"_ori_labels.npy")
+
+
+    #limit = 1000
+    #X = X[:limit,:]
+    #labels = labels[:limit]
+    #ori_labels = ori_labels[:limit]
 
     (n, d) = X.shape
+    colors = np.zeros([n,3])
+    for i in range(n):
+        k = labels[i]
+        if k != ori_labels[i]:
+            colors[i][0] = 1
+            colors[i][1] = 0
+            colors[i][2] = 0
+        else:
+            colors[i][0] = 0
+            colors[i][1] = k/8*0.125
+            colors[i][2] = (k%8)*0.125
+
     for i in range(n):
         X[i,:] /= np.linalg.norm(X[i,:])
+
+
+    for i in range(n):
+        if labels[i] != ori_labels[i]:
+            if random.random() > 0.3:
+                labels[i] = ori_labels[i]
 
     print(X.shape)
     print(np.max(X))
     print(labels.shape)
     Y = tsne(X, 2, 50, 20.0)
-    pylab.scatter(Y[:, 0], Y[:, 1], 20, labels)
-    pylab.show()
+    pylab.scatter(Y[:, 0], Y[:, 1], 20, colors)
+    pylab.savefig('foo.png')
