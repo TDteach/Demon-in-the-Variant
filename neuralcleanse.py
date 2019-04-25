@@ -574,9 +574,6 @@ def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb', out_png=False):
       #cv2.waitKey()
       #break
 
-  #mask_abs[1] -= 130
-  mask_abs[0] -= 15
-
   out_norms = np.zeros([len(mask_abs),2])
   z = 0
   for k,v in mask_abs.items():
@@ -607,11 +604,11 @@ def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb', out_png=False):
   plt.show()
 
 
-def obtain_masks_for_labels(options, labels):
+def obtain_masks_for_labels(options, labels, out_folder):
   # to be sure:
   out_json_file = 'temp_config.json'
 
-  options.num_epochs = 10
+  options.num_epochs = 30
   options.net_mode = 'backdoor_def'
   options.loss_lambda =0.01
   options.build_level = 'logits'
@@ -619,8 +616,8 @@ def obtain_masks_for_labels(options, labels):
   options.data_mode = 'global_label'
   options.fix_level = 'bottom_affine'
   options.optimizer='adam'
+  options.base_lr = 0.05
   options.weight_decay=0
-  options.init_learning_rate=0.05
   for lb in labels:
     print('===LOG===')
     print('running %d' % lb)
@@ -632,6 +629,10 @@ def obtain_masks_for_labels(options, labels):
     os.system('rm -rf '+options.checkpoint_folder)
     os.system('python3 benchmarks/train_gtsrb.py --json_config='+out_json_file)
     os.system('mv /home/tdteach/data/checkpoint /home/tdteach/data/%d_checkpoint' % lb)
+
+  os.system('mkdir '+out_folder)
+  os.system('mv *_checkpoint '+out_folder)
+  clean_mask_folder(mask_folder=out_folder)
 
 def generate_predictions(options, build_level='embeddings', model_name='gtsrb', prefix='out'):
   options.batch_size = 100
@@ -724,9 +725,9 @@ def generate_evade_predictions():
 
 def investigate_number_source_label(options, model_name):
   options.data_mode = 'poison'
-  options.poison_subject_labels=[[]]
+  options.poison_subject_labels=[[1]]
   options.poison_object_label=[0]
-  options.poison_cover_labels=[[]]
+  options.poison_cover_labels=[[1]]
 
   bak = copy.deepcopy(options)
 
@@ -737,28 +738,28 @@ def investigate_number_source_label(options, model_name):
 
   for i in range(max_n):
     options = bak
-    options.poison_subject_labels[0].append(i+1)
-    options.poison_cover_labels[0].append(i+1)
+    #options.poison_subject_labels[0].append(i+1)
+    options.poison_cover_labels[0].append(i*3+2)
     save_options_to_file(options, out_json_file)
+    bak = copy.deepcopy(options)
 
     os.system('rm -rf '+options.checkpoint_folder)
     os.system('python3 benchmarks/train_gtsrb.py --json_config='+out_json_file)
 
-    bak = copy.deepcopy(options)
-
+    options.poison_cover_labels=[[]]
     options.poison_subject_labels=[None]
+    options.load_mode = 'all'
     options.backbone_model_path = get_last_checkpoint_in_folder(options.checkpoint_folder)
     acc[i] = test_poison_performance(options, model_name)
     reset_all()
 
   print('===Results===')
-  np.save('acc.npy', acc)
+  np.save('cover_acc.npy', acc)
   print('write acc array to acc.npy')
 
 
 def train_model(options, model_name):
   out_json_file = 'temp_config.json'
-  options.num_epochs = 10
 
   save_options_to_file(options, out_json_file)
 
@@ -780,7 +781,7 @@ if __name__ == '__main__':
   # inspect_checkpoint('/home/tdteach/data/checkpoint/model.ckpt-0',False)
   # inspect_checkpoint('/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/0_checkpoint/model.ckpt-3073',False)
   # exit(0)
-  # clean_mask_folder(mask_folder='/home/tdteach/data/mask_test_gtsrb_solid_rd_79.60/')
+  # clean_mask_folder(mask_folder='/home/tdteach/data/mask_test_gtsrb_solid_rd_93.34/')
 
   #generate_evade_predictions()
   #exit(0)
@@ -790,8 +791,8 @@ if __name__ == '__main__':
   model_name='gtsrb'
   home_dir = '/home/tangd/'
   options.home_dir = home_dir
-  model_folder = home_dir+'data/mask_test_gtsrb_solid_rd_79.60/'
-  # model_folder = home_dir+'data/checkpoint/'
+  # model_folder = home_dir+'data/mask_test_gtsrb_benign/'
+  model_folder = home_dir+'data/_checkpoint/'
   # model_folder = home_dir+'data/mask_test_gtsrb_f1_t0_nc_solid/0_checkpoint/'
   try:
     model_path = get_last_checkpoint_in_folder(model_folder)
@@ -800,19 +801,23 @@ if __name__ == '__main__':
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/_checkpoint/model.ckpt-3073'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
-  model_path = home_dir+'data/gtsrb_models/f7t0nc_normal_lu_25.77'
-  # model_path = home_dir+'data/gtsrb_models/012_others'
-  options.load_mode = 'all'
+  # model_path = home_dir+'data/gtsrb_models/f1t0nc_solid_rd_46.08'
+  model_path = home_dir+'data/gtsrb_models/benign_all'
+  options.net_mode = 'normal'
+  options.load_mode = 'bottom_affine'
+  options.fix_level = 'none'
+  options.num_epochs = 20
   options.backbone_model_path = model_path
   options.data_dir = home_dir+'data/GTSRB/train/Images/'
   testset_dir= home_dir+'data/GTSRB/test/Images/'
   options.data_mode = 'poison'
-  options.poison_subject_labels=[[1,2,3,4,5,6,7,8,9]]
+  #label_list = list(range(20))
+  options.poison_subject_labels=[None]
   options.poison_object_label=[0]
-  options.poison_cover_labels=[[1,2,3,4,5,6,7,8,9]]
+  options.poison_cover_labels=[[]]
   outfile_prefix = 'out'
-  # options.poison_pattern_file = None
-  options.poison_pattern_file = [home_dir+'workspace/backdoor/solid_rd.png']
+  options.poison_pattern_file = None
+  # options.poison_pattern_file = [home_dir+'workspace/backdoor/solid_rd.png']
   # pattern_file=[(home_dir + 'workspace/backdoor/0_pattern.png', home_dir+'workspace/backdoor/0_mask.png')]
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
   #                        home_dir + 'workspace/backdoor/normal_md.png',
@@ -822,8 +827,8 @@ if __name__ == '__main__':
   # test_blended_input(model_path,data_dir)
   # test_poison_performance(options, model_name)
   # test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
-  # test_mask_efficiency(model_path, testset_dir=testset_dir, global_label=0)
-  # investigate_number_source_label(options, model_name)
+  # test_mask_efficiency(model_path, testset_dir=testset_dir, global_label=18)
+  investigate_number_source_label(options, model_name)
   # train_model(options,model_name)
-  # obtain_masks_for_labels(options, list(range(20)))
-  # obtain_masks_for_labels(options, [0])
+  # obtain_masks_for_labels(options, list(range(43)))
+  # obtain_masks_for_labels(options, [3])
