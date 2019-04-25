@@ -192,24 +192,57 @@ if __name__ == "__main__":
     labels = np.load(prefix+"_labels.npy")
     ori_labels = np.load(prefix+"_ori_labels.npy")
 
+    XX = []
+    LL = []
+    OO = []
 
-    #limit = 1000
-    #X = X[:limit,:]
-    #labels = labels[:limit]
-    #ori_labels = ori_labels[:limit]
+    (n,d) = X.shape
+    print(n)
+    n = len(labels)
+    print(n)
+    n = len(ori_labels)
+    print(n)
+
+
+    limit = 10
+    (n, d) = X.shape
+    cc = [0]*44
+    idx = np.zeros([n,1], dtype=np.int32)
+    for i in range(n):
+        k = labels[i]
+        if (labels[i] != ori_labels[i]):
+            k = 43
+        if (cc[k] < limit):
+            XX.append(X[i,:])
+            LL.append(labels[i])
+            OO.append(ori_labels[i])
+        cc[k] += 1
+
+    X = np.asarray(XX);
+    labels = LL;
+    ori_labels = OO;
+
 
     (n, d) = X.shape
     colors = np.zeros([n,3])
     for i in range(n):
         k = labels[i]
         if k != ori_labels[i]:
+            colors[i][0] = 0
+            colors[i][1] = 0
+            colors[i][2] = 0
+        elif k == 7:
+            colors[i][0] = 0
+            colors[i][1] = 0
+            colors[i][2] = 1
+        elif k == 0:
             colors[i][0] = 1
             colors[i][1] = 0
             colors[i][2] = 0
         else:
             colors[i][0] = 0
-            colors[i][1] = k/8*0.125
-            colors[i][2] = (k%8)*0.125
+            colors[i][1] = 0.8+k/8*0.025
+            colors[i][2] = 0.8+(k%8)*0.025
 
     for i in range(n):
         X[i,:] /= np.linalg.norm(X[i,:])
@@ -220,9 +253,6 @@ if __name__ == "__main__":
             if random.random() > 0.3:
                 labels[i] = ori_labels[i]
 
-    print(X.shape)
-    print(np.max(X))
-    print(labels.shape)
     Y = tsne(X, 2, 50, 20.0)
     pylab.scatter(Y[:, 0], Y[:, 1], 20, colors)
     pylab.savefig('foo.png')
