@@ -505,7 +505,7 @@ def pull_out_trigger(model_path, data_dir, model_name = 'gtsrb'):
     out_color = pattern*mask*255
     cv2.imwrite(show_name, out_color.astype(np.uint8))
 
-def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb'):
+def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb', out_png=False):
   options = Options
 
   options.model_name = model_name
@@ -559,23 +559,23 @@ def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb'):
       pattern = (pattern[0]+1)/2
       mask = mask[0]
       mask_abs[k] = np.sum(np.abs(mask))
-
-      show_name = '%d_pattern.png'%k
-      out_pattern = pattern*255
-      cv2.imwrite(show_name, out_pattern.astype(np.uint8))
-      show_name = '%d_mask.png'%k
-      out_mask = mask*255
-      cv2.imwrite(show_name, out_mask.astype(np.uint8))
-      show_name = '%d_color.png'%k
-      out_color = pattern*mask*255
-      cv2.imwrite(show_name, out_color.astype(np.uint8))
+      if out_png:
+        show_name = '%d_pattern.png'%k
+        out_pattern = pattern*255
+        cv2.imwrite(show_name, out_pattern.astype(np.uint8))
+        show_name = '%d_mask.png'%k
+        out_mask = mask*255
+        cv2.imwrite(show_name, out_mask.astype(np.uint8))
+        show_name = '%d_color.png'%k
+        out_color = pattern*mask*255
+        cv2.imwrite(show_name, out_color.astype(np.uint8))
 
       #cv2.imshow(show_name,out_pattern)
       #cv2.waitKey()
       #break
 
-
-  return
+  #mask_abs[1] -= 130
+  mask_abs[0] -= 15
 
   out_norms = np.zeros([len(mask_abs),2])
   z = 0
@@ -584,9 +584,9 @@ def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb'):
     out_norms[z][1] = v
     z = z+1
 
-  #print('===Results===')
-  #np.save('out_norms.npy', out_norms)
-  #print('write norms to out_norms.npy')
+  print('===Results===')
+  np.save('out_norms.npy', out_norms)
+  print('write norms to out_norms.npy')
   #return
 
   vs = list(mask_abs.values())
@@ -788,10 +788,10 @@ if __name__ == '__main__':
   options = Options()
 
   model_name='gtsrb'
-  home_dir = '/home/tdteach/'
+  home_dir = '/home/tangd/'
   options.home_dir = home_dir
-  # model_folder = home_dir+'data/mask_test_gtsrb_benign/'
-  model_folder = home_dir+'data/0_checkpoint/'
+  model_folder = home_dir+'data/mask_test_gtsrb_solid_rd_79.60/'
+  # model_folder = home_dir+'data/checkpoint/'
   # model_folder = home_dir+'data/mask_test_gtsrb_f1_t0_nc_solid/0_checkpoint/'
   try:
     model_path = get_last_checkpoint_in_folder(model_folder)
@@ -817,7 +817,7 @@ if __name__ == '__main__':
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
   #                        home_dir + 'workspace/backdoor/normal_md.png',
   #                        home_dir + 'workspace/backdoor/uniform.png']
-  # show_mask_norms(mask_folder=model_folder, data_dir=data_dir,model_name=model_name)
+  show_mask_norms(mask_folder=model_folder, data_dir=options.data_dir,model_name=model_name, out_png=True)
   # generate_predictions(options, prefix=outfile_prefix)
   # test_blended_input(model_path,data_dir)
   # test_poison_performance(options, model_name)
@@ -825,5 +825,5 @@ if __name__ == '__main__':
   # test_mask_efficiency(model_path, testset_dir=testset_dir, global_label=0)
   # investigate_number_source_label(options, model_name)
   # train_model(options,model_name)
-  obtain_masks_for_labels(options, list(range(20)))
-  #obtain_masks_for_labels(options, [0])
+  # obtain_masks_for_labels(options, list(range(20)))
+  # obtain_masks_for_labels(options, [0])

@@ -93,13 +93,16 @@ save(['normal_0.',num2str(r),'_data.mat'],'inv_Sigma','mu');
 % save('good_rst_poisoned_normal_lu_#51_8993','good_Su','good_Se','good_u','good_e');
 %%
 fo = '/home/tangd/workspace/backdoor/';
-prefix = 'init';
+prefix = 'out';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
 ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
 
-% gidx = (labels==ori_labels);
-gidx = (labels>=0);
+% ori_labels(ori_labels<3) = 0;
+% labels(labels<3) = 0;
+%%
+gidx = (labels==ori_labels);
+% gidx = (labels>=0);
 c = rand(size(gidx));
 gidx = gidx.*c;
 gidx = gidx>(1-0.8);
@@ -111,7 +114,10 @@ gY = labels(gidx,:);
 % gY = gY(gidx,:);
 [Su, Se, mean_a, mean_l] = global_model(gX, gY);
 %%
-lidx = (labels<10);
+% lidx = (labels<10);
+lidx = (labels==ori_labels).*(labels<10);
+lidx = logical(lidx);
+
 lX = features(lidx,:);
 lY = labels(lidx,:);
 [ class_score, u1, u2, split_rst] = local_model(lX, lY, Su, Se, mean_a);
@@ -348,10 +354,10 @@ boxplot(s_norms', s_group', 'Whisker',1, 'symbol','');
 ylim([0,5]);
 hold on;
 plot(1,no_g(1),'Xr','MarkerSize',20);
-plot(2,no_m(1),'Xr','MarkerSize',20);
-plot(3,no_i(1),'Xr','MarkerSize',20);
+plot(2,no_i(1),'Xr','MarkerSize',20);
+plot(3,no_m(1),'Xr','MarkerSize',20);
 
-xticklabels({'GTSRB','MegaFace','ImageNet'})
+xticklabels({'GTSRB','ImageNet','MegaFace'})
 %%
 %show difference from partially known data
 load('normal_data.mat');
@@ -397,4 +403,57 @@ y = labels==ori_labels;
 [tpr, fpr, thr] = roc(y', -dis');
 plot(fpr,tpr);
 
-
+%%
+acc= readNPY(['cover_acc.npy']);
+n = size(acc,1);
+plot(1:n,acc);
+%%
+a = zeros(10,1);
+for i=1:43
+    a(i) = sum(ori_labels==i-1);
+end
+a(8) = a(8)/2;
+nn = sum(a);
+%%
+b = zeros(10,2);
+zz = 0;
+for i=0:9
+    zz = zz+a(i*3+2+1);
+    b(i+1,1) = a(2)/(nn);
+    b(i+1,2) = zz/(nn);
+end
+b
+%%
+%show box fig of norm
+fo = '/home/tangd/workspace/backdoor/';
+x = {'7.49','25.77','46.08','79.60','93.34'};
+n = size(x,2);
+g_norms = cell(1,n);
+for i =1:n
+    g_norms{1,i} = readNPY([fo,x{i},'_out_norms.npy']);
+end
+for i = 1:n
+    a = g_norms{1,i};
+    a(:,2) = a(:,2)./max(a(:,2));
+    if i == 1
+        norms = a;
+    else
+        norms = [norms;a];
+    end
+end
+k = 0;
+o = zeros(n,1);
+for i = 1:size(norms,1)
+    if norms(i,1) == 0
+        k = k+1;
+        o(k,1) = norms(i,2);
+    end
+    norms(i,1) = k;
+end
+boxplot(norms(:,2),norms(:,1), 'Labels',x, 'symbol','');
+hold on;
+plot([1:n], o, 'Xr','MarkerSize',12);
+legend(['target class']);
+set(gcf,'Position',[100 100 350 250]);
+xlabel('Globally misclassification rate of the backdoor');
+ylabel('Regularized magnitude');

@@ -25,7 +25,7 @@ function [ class_score, u1, u2, split_rst ] = local_model(fM, lbs, Su, Se, mean_
         if (i < N) && (k == seq_Y(i+1))
             continue
         end
-        disp(k);
+        disp(Y(i));
         [i_z1, i_u1, i_u2, i_sc] = find_LDA_split(X(last_i+1:i,:), Su, Se);
         split_rst(last_i+1:i,:) = i_z1;
         u1(k,:) = i_u1;
