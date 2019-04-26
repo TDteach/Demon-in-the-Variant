@@ -11,9 +11,9 @@ import benchmark_cnn
 
 from config import Options
 from utils import *
-import train_gtsrb
-# import train_megaface
-# import train_imagenet
+#import train_gtsrb
+#import train_megaface
+import train_imagenet
 from model_builder import Model_Builder
 
 import numpy as np
@@ -21,8 +21,23 @@ import random
 import math
 import copy
 
+def get_test_batch_size(model_name):
+  if model_name == 'gtsrb':
+    return 100
+  if model_name == 'resnet50':
+    return 50
+  if 'resnet101' in model_name:
+    return 30
 
-def get_data(options, dataset=None, model_name='gtsrb'):
+def get_script(model_name):
+  if model_name == 'gtsrb':
+    return 'python3 benchmarks/train_gtsrb.py'
+  if model_name == 'resnet50':
+    return 'python3 benchmarks/train_imagenet.py'
+  if 'resnet101' in model_name:
+    return 'python3 benchmarks/train_megaface.py'
+
+def get_data(options, dataset=None, model_name='gtsrb', phase='train'):
   if dataset is None:
     if 'gtsrb' == model_name:
       if 'test' in options.data_dir:
@@ -32,11 +47,11 @@ def get_data(options, dataset=None, model_name='gtsrb'):
     elif 'resnet101' in model_name:
       dataset = train_megaface.MegaFaceDataset(options)
     elif 'resnet50' == model_name:
-      dataset = train_megaface.MegaFaceDataset(options)
+      dataset = train_imagenet.ImageNetDataset(options)
 
   params = benchmark_cnn.make_params()
   params = params._replace(batch_size=options.batch_size)
-  params = params._replace(model='MY_GTSRB')
+  params = params._replace(model='MY_'+model_name)
   params = params._replace(num_epochs=options.num_epochs)
   params = params._replace(num_gpus=options.num_gpus)
   params = params._replace(data_format='NHWC')
@@ -54,20 +69,23 @@ def get_data(options, dataset=None, model_name='gtsrb'):
 
   model = Model_Builder(model_name, dataset.num_classes, options, params)
 
+  is_train = (phase=='train')
   p_class = dataset.get_input_preprocessor()
   preprocessor = p_class(options.batch_size,
-                         model.get_input_shapes('train'),
+                         model.get_input_shapes(phase),
                          options.batch_size,
                          model.data_type,
-                         True,
+                         is_train,
                          distortions=params.distortions,
                          resize_method='bilinear')
   ds = preprocessor.create_dataset(batch_size=options.batch_size,
                                    num_splits=1,
                                    batch_size_per_split=options.batch_size,
                                    dataset=dataset,
-                                   subset='train',
-                                   train=True)
+                                   subset=phase,
+                                   train=is_train,
+                                   #datasets_repeat_cached_sample = params.datasets_repeat_cached_sample)
+                                   datasets_repeat_cached_sample = False)
   ds_iter = preprocessor.create_iterator(ds)
   input_list = ds_iter.get_next()
   return model, dataset, input_list
@@ -387,7 +405,7 @@ def test_mask_efficiency(model_path, testset_dir, global_label, selected_labels=
 def test_performance(model_path, testset_dir, selected_labels=None, model_name='gtsrb'):
   options = Options
 
-  options.batch_size = 100
+  options.batch_size = get_test_batch_size(model_name)
   options.num_epochs = 1
   options.net_mode = 'normal'
   options.data_mode = 'normal'
@@ -398,16 +416,12 @@ def test_performance(model_path, testset_dir, selected_labels=None, model_name='
   options.selected_training_labels = selected_labels
 
   dataset = None
-  if model_name=='gtsrb':
-    dataset = train_gtsrb.GTSRBTestDataset(options)
-  elif model_name=='resnet101':
-    dataset = train_megaface.MegaFaceDataset(options)
   model, dataset, img_op, lb_op, out_op, aux_out_op = get_output(options,dataset=dataset,model_name=model_name)
   model.add_backbone_saver()
 
   acc = 0
   t_e = 0
-  run_iters =dataset.num_examples_per_epoch()//options.batch_size + 1
+  run_iters =dataset.num_examples_per_epoch('validation')//options.batch_size + 1
   run_itesr = 10
 
 
@@ -423,6 +437,8 @@ def test_performance(model_path, testset_dir, selected_labels=None, model_name='
     sess.run(table_init_ops)
     model.load_backbone_model(sess, model_path)
     for i in range(run_iters):
+      if (i%10 == 0):
+        print((i+1)*options.batch_size)
       labels, logits = sess.run([lb_op, out_op])
       pds = np.argmax(logits, axis=1)
       acc += sum(np.equal(pds, labels))
@@ -788,8 +804,8 @@ if __name__ == '__main__':
 
   options = Options()
 
-  model_name='gtsrb'
-  home_dir = '/home/tangd/'
+  model_name='resnet50'
+  home_dir = '/home/tangdi/'
   options.home_dir = home_dir
   # model_folder = home_dir+'data/mask_test_gtsrb_benign/'
   model_folder = home_dir+'data/_checkpoint/'
@@ -802,33 +818,35 @@ if __name__ == '__main__':
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
   # model_path = home_dir+'data/gtsrb_models/f1t0nc_solid_rd_46.08'
-  model_path = home_dir+'data/gtsrb_models/benign_all'
+  model_path = home_dir+'data/imagenet_models/f1t0c11c12'
   options.net_mode = 'normal'
   options.load_mode = 'bottom_affine'
   options.fix_level = 'none'
   options.num_epochs = 20
+  options.num_gpus = 1
   options.backbone_model_path = model_path
-  options.data_dir = home_dir+'data/GTSRB/train/Images/'
+  #options.data_dir = home_dir+'data/GTSRB/train/Images/'
+  options.data_dir = home_dir+'data/imagenet/'
   testset_dir= home_dir+'data/GTSRB/test/Images/'
   options.data_mode = 'poison'
   #label_list = list(range(20))
-  options.poison_subject_labels=[None]
+  options.poison_subject_labels=[[1]]
   options.poison_object_label=[0]
-  options.poison_cover_labels=[[]]
+  options.poison_cover_labels=[[1]]
   outfile_prefix = 'out'
-  options.poison_pattern_file = None
-  # options.poison_pattern_file = [home_dir+'workspace/backdoor/solid_rd.png']
+  # options.poison_pattern_file = None
+  options.poison_pattern_file = [home_dir+'workspace/backdoor/solid_rd.png']
   # pattern_file=[(home_dir + 'workspace/backdoor/0_pattern.png', home_dir+'workspace/backdoor/0_mask.png')]
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
   #                        home_dir + 'workspace/backdoor/normal_md.png',
   #                        home_dir + 'workspace/backdoor/uniform.png']
-  show_mask_norms(mask_folder=model_folder, data_dir=options.data_dir,model_name=model_name, out_png=True)
+  # show_mask_norms(mask_folder=model_folder, data_dir=options.data_dir,model_name=model_name, out_png=True)
   # generate_predictions(options, prefix=outfile_prefix)
   # test_blended_input(model_path,data_dir)
-  # test_poison_performance(options, model_name)
+  test_poison_performance(options, model_name)
   # test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
   # test_mask_efficiency(model_path, testset_dir=testset_dir, global_label=18)
-  investigate_number_source_label(options, model_name)
+  # investigate_number_source_label(options, model_name)
   # train_model(options,model_name)
   # obtain_masks_for_labels(options, list(range(43)))
   # obtain_masks_for_labels(options, [3])
