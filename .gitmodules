@@ -4,3 +4,4 @@
 [submodule "tf_models"]
 	path = tf_models
 	url = https://github.com/tensorflow/models.git
+        branch = r1.12.0
