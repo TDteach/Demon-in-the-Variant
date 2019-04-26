@@ -21,6 +21,51 @@ import random
 import math
 import copy
 
+
+def gen_feed_data(sess, input_list, buf, options):
+  selet = options.selected_training_labels
+  if len(input_list) == 3:
+    im_op, lb_op, or_op = input_list
+    if buf is None:
+      buf = ([],[],[])
+    while len(buf[0]) < options.batch_size:
+      images, labels, ori_labels = sess.run([im_op, lb_op, or_op])
+      for i, l, o in zip(images, labels, ori_labels):
+        if selet is Nont or o in selet:
+          buf[0].append(i)
+          buf[1].append(l)
+          buf[2].append(o)
+    im = np.asarray(buf[0][0:options.batch_size])
+    lb = np.asarray(buf[1][0:options.batch_size])
+    ol = np.asarray(buf[2][0:options.batch_size])
+    buf[0] = buf[0][options.batch_size:]
+    buf[1] = buf[1][options.batch_size:]
+    buf[2] = buf[2][options.batch_size:]
+
+    return (im, lb, ol), buf
+  elif len(input_list) == 2:
+    im_op, lb_op = input_list
+    if buf is None:
+      buf = ([],[])
+    while len(buf[0]) < options.batch_size:
+      images, labels = sess.run([im_op, lb_op])
+      for i, l in zip(images, labels):
+        if selet is Nont or l in selet:
+          buf[0].append(i)
+          buf[1].append(l)
+    im = np.asarray(buf[0][0:options.batch_size])
+    lb = np.asarray(buf[1][0:options.batch_size])
+    buf[0] = buf[0][options.batch_size:]
+    buf[1] = buf[1][options.batch_size:]
+
+    return (im, lb), buf
+
+
+def feed_input_by_dict(options, model_name):
+  if model_name == 'resnet50' and options.selected_training_labels is not None:
+    return True
+  return False
+
 def get_test_batch_size(model_name):
   if model_name == 'gtsrb':
     return 100
@@ -87,6 +132,7 @@ def get_data(options, dataset=None, model_name='gtsrb', phase='train'):
                                    #datasets_repeat_cached_sample = params.datasets_repeat_cached_sample)
                                    datasets_repeat_cached_sample = False)
   ds_iter = preprocessor.create_iterator(ds)
+
   input_list = ds_iter.get_next()
   return model, dataset, input_list
 
@@ -94,14 +140,19 @@ def get_data(options, dataset=None, model_name='gtsrb', phase='train'):
 def get_output(options, dataset=None, model_name='gtsrb'):
 
   model, dataset, input_list = get_data(options, dataset, model_name)
-  img_op, label_op = input_list
+  feed_list = None
 
-  with tf.variable_scope('v0'):
-    bld_rst = model.build_network(input_list,phase_train=False,nclass=dataset.num_classes)
+  if feed_input_by_dict(options, model_name):
+    img_holder = tf.placeholder(tf.float32,[options.batch_size,options.crop_size,options.crop_size,3],'input_image')
+    lb_holder = tf.placeholder(tf.int32,[options.batch_size,1],'input_label')
+    feed_list = (img_holder, lb_holder)
+    with tf.variable_scope('v0'):
+      bld_rst = model.build_network(feed_list,phase_train=False,nclass=dataset.num_classes)
+  else:
+    with tf.variable_scope('v0'):
+      bld_rst = model.build_network(input_list,phase_train=False,nclass=dataset.num_classes)
 
-  return model, dataset, img_op, label_op, bld_rst.logits, bld_rst.extra_info
-
-
+  return model, dataset, input_list, feed_list, bld_rst.logits, bld_rst.extra_info
 
 def generate_sentinet_inputs(a_matrix, a_labels, b_matrix, b_labels, a_is='infected'):
 
@@ -331,9 +382,12 @@ def test_poison_performance(options, model_name):
     else:
       options.selected_training_labels = None
 
-  model, dataset, img_op, lb_op, out_op, aux_out_op = get_output(options,model_name=model_name)
+  model, dataset, input_list, feed_list, out_op, aux_out_op = get_output(options,model_name=model_name)
   model.add_backbone_saver()
 
+  im_op = input_list[0]
+  lb_op = input_list[1]
+  buf = None
   acc = 0
   t_e = 0
 
@@ -354,11 +408,15 @@ def test_poison_performance(options, model_name):
     for i in range(run_iters):
       if (i%10 == 0):
         print((i+1)*options.batch_size)
-      labels, logits = sess.run([lb_op, out_op])
+      if feed_list is not None
+        feed_data, buf = gen_feed_data(sess, input_list, buf, options)
+        labels, logits = sess.run([lb_op, out_op], feed_dict={feed_list[0]:feed_data[0], feed_list[1]:feed_data[1]})
+      else:
+        labels, logits = sess.run([lb_op, out_op])
       pds = np.argmax(logits, axis=1)
       if len(labels.shape) > 1:
         pds = np.expand_dims(pds,axis=1)
-      acc += sum(np.equal(pds, labels)) 
+      acc += sum(np.equal(pds, labels))
       t_e += options.batch_size
   acc = acc/t_e
   print('===Results===')
