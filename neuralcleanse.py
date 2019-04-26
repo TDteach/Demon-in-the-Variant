@@ -27,11 +27,11 @@ def gen_feed_data(sess, input_list, buf, options):
   if len(input_list) == 3:
     im_op, lb_op, or_op = input_list
     if buf is None:
-      buf = ([],[],[])
+      buf = [[],[],[]]
     while len(buf[0]) < options.batch_size:
       images, labels, ori_labels = sess.run([im_op, lb_op, or_op])
       for i, l, o in zip(images, labels, ori_labels):
-        if selet is Nont or o in selet:
+        if selet is None or o in selet:
           buf[0].append(i)
           buf[1].append(l)
           buf[2].append(o)
@@ -42,21 +42,26 @@ def gen_feed_data(sess, input_list, buf, options):
     buf[1] = buf[1][options.batch_size:]
     buf[2] = buf[2][options.batch_size:]
 
+    if len(lb.shape) < 2:
+      lb = np.expand_dims(lb,axis=1)
+
     return (im, lb, ol), buf
   elif len(input_list) == 2:
     im_op, lb_op = input_list
     if buf is None:
-      buf = ([],[])
+      buf = [[],[]]
     while len(buf[0]) < options.batch_size:
       images, labels = sess.run([im_op, lb_op])
       for i, l in zip(images, labels):
-        if selet is Nont or l in selet:
+        if selet is None or l in selet:
           buf[0].append(i)
           buf[1].append(l)
     im = np.asarray(buf[0][0:options.batch_size])
     lb = np.asarray(buf[1][0:options.batch_size])
     buf[0] = buf[0][options.batch_size:]
     buf[1] = buf[1][options.batch_size:]
+    if len(lb.shape) < 2:
+      lb = np.expand_dims(lb,axis=1)
 
     return (im, lb), buf
 
@@ -392,7 +397,7 @@ def test_poison_performance(options, model_name):
   t_e = 0
 
   run_iters = dataset.num_examples_per_epoch()//options.batch_size + 1
-  run_iters = min(100,run_iters)
+  run_iters = min(10,run_iters)
 
   config = tf.ConfigProto()
   config.gpu_options.allow_growth = True
@@ -408,9 +413,10 @@ def test_poison_performance(options, model_name):
     for i in range(run_iters):
       if (i%10 == 0):
         print((i+1)*options.batch_size)
-      if feed_list is not None
+      if feed_list is not None:
         feed_data, buf = gen_feed_data(sess, input_list, buf, options)
-        labels, logits = sess.run([lb_op, out_op], feed_dict={feed_list[0]:feed_data[0], feed_list[1]:feed_data[1]})
+        logits = sess.run(out_op, feed_dict={feed_list[0]:feed_data[0], feed_list[1]:feed_data[1]})
+        labels = feed_data[1]
       else:
         labels, logits = sess.run([lb_op, out_op])
       pds = np.argmax(logits, axis=1)
@@ -484,7 +490,7 @@ def test_performance(model_path, testset_dir, selected_labels=None, model_name='
 
   acc = 0
   t_e = 0
-  run_iters =dataset.num_examples_per_epoch('validation')//options.batch_size + 1
+  run_iters =dataset.num_examples_per_epoch()//options.batch_size + 1
   run_itesr = 10
 
 
@@ -868,6 +874,7 @@ if __name__ == '__main__':
   options = Options()
 
   model_name='resnet50'
+  options.gen_ori_label = True
   home_dir = '/home/tangdi/'
   options.home_dir = home_dir
   # model_folder = home_dir+'data/mask_test_gtsrb_benign/'
