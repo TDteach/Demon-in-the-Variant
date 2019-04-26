@@ -79,13 +79,23 @@ def get_test_batch_size(model_name):
   if 'resnet101' in model_name:
     return 30
 
-def get_script(model_name):
+def get_run_script(model_name):
   if model_name == 'gtsrb':
     return 'python3 benchmarks/train_gtsrb.py'
   if model_name == 'resnet50':
     return 'python3 benchmarks/train_imagenet.py'
   if 'resnet101' in model_name:
     return 'python3 benchmarks/train_megaface.py'
+
+def justify_image_size(options, model_name):
+  if model_name == 'gtsrb':
+    options.crop_size = 32
+  elif 'resnet101' in model_name:
+    options.crop_size = 128
+  elif model_name == 'resnet50':
+    options.crop_size = 300
+  return options
+
 
 def get_data(options, dataset=None, model_name='gtsrb', phase='train'):
   if dataset is None:
@@ -110,12 +120,7 @@ def get_data(options, dataset=None, model_name='gtsrb', phase='train'):
   params = params._replace(forward_only=True)
   params = benchmark_cnn.setup(params)
 
-  if model_name == 'gtsrb':
-    options.crop_size = 32
-  elif 'resnet101' in model_name:
-    options.crop_size = 128
-  elif model_name == 'resnet50':
-    options.crop_size = 300
+  options = justify_image_size(options, model_name)
 
   model = Model_Builder(model_name, dataset.num_classes, options, params)
 
@@ -689,9 +694,12 @@ def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb', out_png=False):
   plt.show()
 
 
-def obtain_masks_for_labels(options, labels, out_folder):
+def obtain_masks_for_labels(options, labels, out_folder, model_name):
   # to be sure:
   out_json_file = 'temp_config.json'
+
+  options = justify_image_size(options, model_name)
+  options.data_subset = 'validation'
 
   options.num_epochs = 30
   options.net_mode = 'backdoor_def'
@@ -703,16 +711,18 @@ def obtain_masks_for_labels(options, labels, out_folder):
   options.optimizer='adam'
   options.base_lr = 0.05
   options.weight_decay=0
+
+  run_script = get_run_script(model_name)
+
   for lb in labels:
     print('===LOG===')
     print('running %d' % lb)
-
 
     options.global_label = lb
     save_options_to_file(options, out_json_file)
 
     os.system('rm -rf '+options.checkpoint_folder)
-    os.system('python3 benchmarks/train_gtsrb.py --json_config='+out_json_file)
+    os.system(run_script+' --json_config='+out_json_file)
     os.system('mv /home/tdteach/data/checkpoint /home/tdteach/data/%d_checkpoint' % lb)
 
   os.system('mkdir '+out_folder)
