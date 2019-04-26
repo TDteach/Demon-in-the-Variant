@@ -312,7 +312,7 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
 
 def test_poison_performance(options, model_name):
   options.shuffle=False
-  options.batch_size = 100
+  options.batch_size = get_test_batch_size(model_name)
   options.num_epochs = 1
   options.net_mode = 'normal'
   options.data_mode = 'poison'
@@ -338,6 +338,7 @@ def test_poison_performance(options, model_name):
   t_e = 0
 
   run_iters = dataset.num_examples_per_epoch()//options.batch_size + 1
+  run_iters = min(100,run_iters)
 
   config = tf.ConfigProto()
   config.gpu_options.allow_growth = True
@@ -351,9 +352,13 @@ def test_poison_performance(options, model_name):
     sess.run(table_init_ops)
     model.load_backbone_model(sess, options.backbone_model_path)
     for i in range(run_iters):
+      if (i%10 == 0):
+        print((i+1)*options.batch_size)
       labels, logits = sess.run([lb_op, out_op])
       pds = np.argmax(logits, axis=1)
-      acc += sum(np.equal(pds, labels))
+      if len(labels.shape) > 1:
+        pds = np.expand_dims(pds,axis=1)
+      acc += sum(np.equal(pds, labels)) 
       t_e += options.batch_size
   acc = acc/t_e
   print('===Results===')
