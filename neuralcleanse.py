@@ -695,24 +695,31 @@ def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb', out_png=False):
 
 
 def obtain_masks_for_labels(options, labels, out_folder, model_name):
-  # to be sure:
   out_json_file = 'temp_config.json'
 
   options = justify_image_size(options, model_name)
   options.data_subset = 'validation'
+  options.gen_ori_label = False
 
-  options.num_epochs = 30
+  options.num_epochs = 10
   options.net_mode = 'backdoor_def'
-  options.loss_lambda =0.01
+  options.loss_lambda =0.00001
   options.build_level = 'logits'
   options.load_mode = 'bottom_affine'
   options.data_mode = 'global_label'
   options.fix_level = 'bottom_affine'
   options.optimizer='adam'
-  options.base_lr = 0.05
+  options.base_lr = 0.1
   options.weight_decay=0
 
   run_script = get_run_script(model_name)
+  ckpt_folder = options.checkpoint_folder
+  sp_list = ckpt_folder.split('/')
+  if (len(sp_list[-1]) == 0):
+    sp_list = sp_list[:-1]
+  sp_file = sp_list[-1]
+  print(sp_file)
+  print(sp_list)
 
   for lb in labels:
     print('===LOG===')
@@ -721,12 +728,19 @@ def obtain_masks_for_labels(options, labels, out_folder, model_name):
     options.global_label = lb
     save_options_to_file(options, out_json_file)
 
-    os.system('rm -rf '+options.checkpoint_folder)
+    os.system('rm -rf '+ckpt_folder)
     os.system(run_script+' --json_config='+out_json_file)
-    os.system('mv /home/tdteach/data/checkpoint /home/tdteach/data/%d_checkpoint' % lb)
+    out_file = ('%d_'%lb)+sp_file
+    sp_list[-1] = out_file
+    new_p = '/'.join(sp_list)
+    os.system('mv '+ckpt_folder+' '+new_p)
 
+  os.system('rm -rf '+out_folder)
   os.system('mkdir '+out_folder)
-  os.system('mv *_checkpoint '+out_folder)
+  out_file = '[0-9]*_'+sp_file
+  sp_list[-1] = out_file
+  new_p = '/'.join(sp_list)
+  os.system('mv '+new_p+' '+out_folder)
   clean_mask_folder(mask_folder=out_folder)
 
 def generate_predictions(options, build_level='embeddings', model_name='gtsrb', prefix='out'):
@@ -854,12 +868,22 @@ def investigate_number_source_label(options, model_name):
 
 
 def train_model(options, model_name):
+  options = justify_image_size(options,model_name)
   out_json_file = 'temp_config.json'
 
   save_options_to_file(options, out_json_file)
 
-  os.system('rm -rf '+options.checkpoint_folder)
-  os.system('python3 benchmarks/train_gtsrb.py --json_config='+out_json_file)
+  run_script = get_run_script(model_name)
+  ckpt_folder = options.checkpoint_folder
+  sp_list = ckpt_folder.split('/')
+  if (len(sp_list[-1]) == 0):
+    sp_list = sp_list[:-1]
+  sp_file = sp_list[-1]
+  print(sp_file)
+  print(sp_list)
+
+  os.system('rm -rf '+ckpt_folder)
+  os.system(run_script+' --json_config='+out_json_file)
 
   options.poison_cover_labels=[[]]
   options.backbone_model_path = get_last_checkpoint_in_folder(options.checkpoint_folder)
@@ -872,7 +896,7 @@ def train_model(options, model_name):
 
 
 if __name__ == '__main__':
-  # inspect_checkpoint('/home/tdteach/data/benchmark_models/poisoned_bb',False)
+  #inspect_checkpoint('/home/tangdi/data/imagenet_models/f1t0c11c12',True)
   # inspect_checkpoint('/home/tdteach/data/checkpoint/model.ckpt-0',False)
   # inspect_checkpoint('/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/0_checkpoint/model.ckpt-3073',False)
   # exit(0)
@@ -884,11 +908,10 @@ if __name__ == '__main__':
   options = Options()
 
   model_name='resnet50'
-  options.gen_ori_label = True
   home_dir = '/home/tangdi/'
   options.home_dir = home_dir
   # model_folder = home_dir+'data/mask_test_gtsrb_benign/'
-  model_folder = home_dir+'data/_checkpoint/'
+  model_folder = home_dir+'data/last_checkpoint/'
   # model_folder = home_dir+'data/mask_test_gtsrb_f1_t0_nc_solid/0_checkpoint/'
   try:
     model_path = get_last_checkpoint_in_folder(model_folder)
@@ -898,16 +921,17 @@ if __name__ == '__main__':
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
   # model_path = home_dir+'data/gtsrb_models/f1t0nc_solid_rd_46.08'
-  model_path = home_dir+'data/imagenet_models/f1t0c11c12'
+  # model_path = home_dir+'data/imagenet_models/f1t0c11c12'
+  #model_path = home_dir+'data/imagenet_models/benign_all'
   options.net_mode = 'normal'
   options.load_mode = 'bottom_affine'
-  options.fix_level = 'none'
-  options.num_epochs = 20
-  options.num_gpus = 1
   options.backbone_model_path = model_path
+  options.fix_level = 'bottom_affine'
+  options.num_epochs = 20
+  options.num_gpus = 2
   #options.data_dir = home_dir+'data/GTSRB/train/Images/'
   options.data_dir = home_dir+'data/imagenet/'
-  testset_dir= home_dir+'data/GTSRB/test/Images/'
+  #testset_dir= home_dir+'data/GTSRB/test/Images/'
   options.data_mode = 'poison'
   #label_list = list(range(20))
   options.poison_subject_labels=[[1]]
@@ -923,10 +947,10 @@ if __name__ == '__main__':
   # show_mask_norms(mask_folder=model_folder, data_dir=options.data_dir,model_name=model_name, out_png=True)
   # generate_predictions(options, prefix=outfile_prefix)
   # test_blended_input(model_path,data_dir)
-  test_poison_performance(options, model_name)
+  # test_poison_performance(options, model_name)
   # test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
   # test_mask_efficiency(model_path, testset_dir=testset_dir, global_label=18)
   # investigate_number_source_label(options, model_name)
   # train_model(options,model_name)
   # obtain_masks_for_labels(options, list(range(43)))
-  # obtain_masks_for_labels(options, [3])
+  obtain_masks_for_labels(options, [0], home_dir+'data/trytry', model_name)
