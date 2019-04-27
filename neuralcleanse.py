@@ -923,8 +923,8 @@ if __name__ == '__main__':
 
   options = Options()
 
-  model_name='resnet50'
-  home_dir = '/home/tdteach/'
+  model_name='gtsrb'
+  home_dir = os.environ['HOME']+'/'
   options.home_dir = home_dir
   # model_folder = home_dir+'data/mask_test_gtsrb_benign/'
   # model_folder = home_dir+'data/last_checkpoint/'
