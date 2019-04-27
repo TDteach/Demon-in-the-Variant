@@ -150,6 +150,7 @@ def get_data(options, dataset=None, model_name='gtsrb', phase='train'):
 def get_output(options, dataset=None, model_name='gtsrb'):
 
   model, dataset, input_list = get_data(options, dataset, model_name)
+  print(input_list)
   feed_list = None
 
   if feed_input_by_dict(options, model_name):
@@ -435,25 +436,28 @@ def test_poison_performance(options, model_name):
 
   return acc
 
-def test_mask_efficiency(model_path, testset_dir, global_label, selected_labels=None):
-  options = Options()
-
+def test_mask_efficiency(options, global_label, selected_labels=None, model_name='gtsrb'):
   options.shuffle = False
-  options.batch_size = 100
+  options.batch_size = get_test_batch_size(model_name)
   options.num_epochs = 1
   options.net_mode = 'backdoor_def'
   options.data_mode = 'global_label'
   options.global_label = global_label
   options.load_mode = 'all'
   options.fix_level = 'all'
-  options.data_dir = testset_dir
   options.selected_training_labels = selected_labels
   options.build_level = 'logits'
+  options.data_subset = 'validation'
+  options.gen_ori_label = False
 
-  dataset = train_gtsrb.GTSRBTestDataset(options)
-  model, dataset, img_op, lb_op, out_op, aux_out_op = get_output(options,dataset=dataset)
+  model, dataset, input_list, feed_list, out_op, aux_out_op = get_output(options,model_name=model_name)
   model.add_backbone_saver()
 
+  run_iters = math.ceil(dataset.num_examples_per_epoch()/options.batch_size)
+  run_iters = min(10, run_iters)
+  im_op = input_list[0]
+  lb_op = input_list[1]
+  buf = None
   acc = 0
   t_e = 0
 
@@ -468,8 +472,13 @@ def test_mask_efficiency(model_path, testset_dir, global_label, selected_labels=
     sess.run(local_var_init_op)
     sess.run(table_init_ops)
     model.load_backbone_model(sess, model_path)
-    for i in range(dataset.num_examples_per_epoch()//options.batch_size + 1):
-      labels, logits = sess.run([lb_op, out_op])
+    for i in range(run_iters):
+      if feed_list is not None:
+        feed_data, buf = gen_feed_data(sess, input_list, buf, options)
+        logits = sess.run(out_op, feed_dict={feed_list[0]:feed_data[0], feed_list[1]:feed_data[1]})
+        labels = feed_data[1]
+      else:
+        labels, logits = sess.run([lb_op, out_op])
       pds = np.argmax(logits, axis=1)
       acc += sum(np.equal(pds, labels))
       t_e += options.batch_size
@@ -604,9 +613,11 @@ def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb', out_png=False):
   options.num_epochs = 1
   options.net_mode = 'backdoor_def'
   options.load_mode = 'all'
+  options.data_subset = 'validation'
   options.fix_level = 'all'
   options.build_level = 'mask_only'
   options.selected_training_labels = None
+  options.gen_ori_label = False
 
   ld_paths = dict()
   root_folder = mask_folder
@@ -624,7 +635,7 @@ def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb', out_png=False):
 
   print(ld_paths)
 
-  model, dataset, img_op, lb_op, out_op, aux_out_op = get_output(options, model_name=model_name)
+  model, dataset, input_list, feed_list, out_op, aux_out_op = get_output(options, model_name=model_name)
   model.add_backbone_saver()
 
   mask_abs = dict()
@@ -718,8 +729,6 @@ def obtain_masks_for_labels(options, labels, out_folder, model_name):
   if (len(sp_list[-1]) == 0):
     sp_list = sp_list[:-1]
   sp_file = sp_list[-1]
-  print(sp_file)
-  print(sp_list)
 
   for lb in labels:
     print('===LOG===')
@@ -908,11 +917,11 @@ if __name__ == '__main__':
   options = Options()
 
   model_name='resnet50'
-  home_dir = '/home/tangdi/'
+  home_dir = '/home/tdteach/'
   options.home_dir = home_dir
   # model_folder = home_dir+'data/mask_test_gtsrb_benign/'
-  model_folder = home_dir+'data/last_checkpoint/'
-  # model_folder = home_dir+'data/mask_test_gtsrb_f1_t0_nc_solid/0_checkpoint/'
+  # model_folder = home_dir+'data/last_checkpoint/'
+  model_folder = home_dir+'data/mask_imagenet_solid_rd/0_checkpoint/'
   try:
     model_path = get_last_checkpoint_in_folder(model_folder)
   except:
@@ -922,13 +931,13 @@ if __name__ == '__main__':
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
   # model_path = home_dir+'data/gtsrb_models/f1t0nc_solid_rd_46.08'
   # model_path = home_dir+'data/imagenet_models/f1t0c11c12'
-  #model_path = home_dir+'data/imagenet_models/benign_all'
+  # model_path = home_dir+'data/imagenet_models/benign_all'
   options.net_mode = 'normal'
   options.load_mode = 'bottom_affine'
   options.backbone_model_path = model_path
   options.fix_level = 'bottom_affine'
   options.num_epochs = 20
-  options.num_gpus = 2
+  options.num_gpus = 1
   #options.data_dir = home_dir+'data/GTSRB/train/Images/'
   options.data_dir = home_dir+'data/imagenet/'
   #testset_dir= home_dir+'data/GTSRB/test/Images/'
@@ -949,8 +958,8 @@ if __name__ == '__main__':
   # test_blended_input(model_path,data_dir)
   # test_poison_performance(options, model_name)
   # test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
-  # test_mask_efficiency(model_path, testset_dir=testset_dir, global_label=18)
+  test_mask_efficiency(options, global_label=3, model_name=model_name)
   # investigate_number_source_label(options, model_name)
   # train_model(options,model_name)
   # obtain_masks_for_labels(options, list(range(43)))
-  obtain_masks_for_labels(options, [0], home_dir+'data/trytry', model_name)
+  # obtain_masks_for_labels(options, [0], home_dir+'data/trytry', model_name)
