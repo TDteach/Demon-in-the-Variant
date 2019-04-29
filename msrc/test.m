@@ -93,7 +93,7 @@ save(['normal_0.',num2str(r),'_data.mat'],'inv_Sigma','mu');
 % save('good_rst_poisoned_normal_lu_#51_8993','good_Su','good_Se','good_u','good_e');
 %%
 fo = '/home/tangd/workspace/backdoor/';
-prefix = 'out';
+prefix = 'no_cover';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
 ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
@@ -101,6 +101,7 @@ ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
 % ori_labels(ori_labels<3) = 0;
 % labels(labels<3) = 0;
 %%
+% global model
 gidx = (labels==ori_labels);
 % gidx = (labels>=0);
 c = rand(size(gidx));
@@ -114,8 +115,9 @@ gY = labels(gidx,:);
 % gY = gY(gidx,:);
 [Su, Se, mean_a, mean_l] = global_model(gX, gY);
 %%
-% lidx = (labels<10);
-lidx = (labels==ori_labels).*(labels<10);
+%local model
+lidx = (labels<10);
+% lidx = lidx.*(labels==ori_labels);
 lidx = logical(lidx);
 
 lX = features(lidx,:);
@@ -206,7 +208,7 @@ plot(fpr,tpr);
 %%
 % for ac
 fo = '/home/tangd/workspace/backdoor/';
-prefix = 'out';
+prefix = 'cover';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
 ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
