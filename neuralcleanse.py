@@ -90,7 +90,7 @@ def justify_image_size(options, model_name):
   elif 'resnet101' in model_name:
     options.crop_size = 128
   elif model_name == 'resnet50':
-    options.crop_size = 300
+    options.crop_size = 224
   return options
 
 
