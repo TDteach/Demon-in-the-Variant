@@ -68,14 +68,6 @@ def feed_input_by_dict(options, model_name):
     return True
   return False
 
-def get_test_batch_size(model_name):
-  if model_name == 'gtsrb':
-    return 100
-  if model_name == 'resnet50':
-    return 50
-  if 'resnet101' in model_name:
-    return 30
-
 def get_run_script(model_name):
   if model_name == 'gtsrb':
     return 'python3 benchmarks/train_gtsrb.py'
@@ -84,13 +76,26 @@ def get_run_script(model_name):
   if 'resnet101' in model_name:
     return 'python3 benchmarks/train_megaface.py'
 
-def justify_image_size(options, model_name):
+def justify_options_for_model(options, model_name):
   if model_name == 'gtsrb':
+    options.batch_size = 64
     options.crop_size = 32
+    if options.data_subset == 'validation':
+      options.data_dir = options.home_dir+'data/GTSRB/test/Images/'
+    else:
+      options.data_dir = options.home_dir+'data/GTSRB/train/Images/'
   elif 'resnet101' in model_name:
+    options.batch_size = 32
     options.crop_size = 128
+    options.data_dir = options.home_dir+'data/imagenet/'
+    options.subset = 'validation'
   elif model_name == 'resnet50':
+    options.batch_size = 32
     options.crop_size = 224
+    if options.data_subset == 'validation':
+      options.data_dir = options.home_dir+'data/MF/test/FaceScrub_aligned/'
+    else:
+      options.data_dir = options.home_dir+'data/MF/train/tightly_cropped/'
   return options
 
 
@@ -119,8 +124,6 @@ def get_data(options, dataset=None, model_name='gtsrb', phase='train'):
   params = params._replace(use_tf_layers=False)
   params = params._replace(forward_only=True)
   params = benchmark_cnn.setup(params)
-
-  options = justify_image_size(options, model_name)
 
   model = Model_Builder(model_name, dataset.num_classes, options, params)
 
@@ -388,11 +391,10 @@ def test_poison_performance(options, model_name):
       options.selected_training_labels = sl
     else:
       options.selected_training_labels = None
-  options.data_subset = 'validation'
   options.gen_ori_label = False
   _performance_test(options, model_name)
 
-def test_mask_efficiency(options, global_label, selected_labels=None, model_name='gtsrb'):
+def test_mask_efficiency(options, global_label, model_name, selected_labels=None):
   options.net_mode = 'backdoor_def'
   options.data_mode = 'global_label'
   options.global_label = global_label
@@ -402,20 +404,20 @@ def test_mask_efficiency(options, global_label, selected_labels=None, model_name
   options.gen_ori_label = False
   _performance_test(options, model_name)
 
-def test_performance(options, selected_labels=None, model_name='gtsrb'):
+def test_performance(options, model_name, selected_labels=None):
   options.net_mode = 'normal'
   options.data_mode = 'normal'
   options.load_mode = 'bottom_affine'
   options.selected_training_labels = selected_labels
-  options.data_subset = 'validation'
   options.gen_ori_label = False
   _performance_test(options, model_name)
 
 
 
 def _performance_test(options, model_name):
+  options.data_subset = 'validation'
+  options = justify_options_for_model(options,model_name)
   options.shuffle = False
-  options.batch_size = get_test_batch_size(model_name)
   options.build_level = 'logits'
   options.fix_level = 'all'
   options.num_epochs = 1
@@ -638,8 +640,8 @@ def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb', out_png=False):
 def obtain_masks_for_labels(options, labels, out_folder, model_name):
   out_json_file = 'temp_config.json'
 
-  options = justify_image_size(options, model_name)
   options.data_subset = 'validation'
+  options = justify_options_for_model(options, model_name)
   options.gen_ori_label = False
 
   options.num_epochs = 10
@@ -811,10 +813,11 @@ def investigate_number_source_label(options, model_name):
 
 
 def train_model(options, model_name):
-  options = justify_image_size(options,model_name)
+  options = justify_options_for_model(options,model_name)
   options.optimizer = 'sgd'
   options.base_lr = 0.05
   options.weight_decay = 0.00004
+  options.fix_level = 'none'
 
 
   out_json_file = 'temp_config.json'
@@ -833,13 +836,18 @@ def train_model(options, model_name):
   os.system('rm -rf '+ckpt_folder)
   os.system(run_script+' --json_config='+out_json_file)
 
-  options.poison_cover_labels=[[]]
-  options.backbone_model_path = get_last_checkpoint_in_folder(options.checkpoint_folder)
-  test_poison_performance(options, model_name)
-  reset_all()
+  if options.data_mode == 'poison':
+    options.poison_cover_labels=[[]]
+    options.backbone_model_path = get_last_checkpoint_in_folder(options.checkpoint_folder)
+    test_poison_performance(options, model_name)
+    reset_all()
 
-  options.poison_subject_labels=[None]
-  test_poison_performance(options, model_name)
+    options.poison_subject_labels=[None]
+    test_poison_performance(options, model_name)
+    reset_all()
+
+  options.data_mode = 'normal'
+  test_performance(options, model_name)
   reset_all()
 
 
@@ -857,14 +865,13 @@ if __name__ == '__main__':
 
   model_name='gtsrb'
   home_dir = os.environ['HOME']+'/'
-  options.home_dir = home_dir
   from tensorflow.python.client import device_lib
   local_device_protos = device_lib.list_local_devices()
   gpus = [x.name for x in local_device_protos if x.device_type == 'GPU']
   options.num_gpus = max(1,len(gpus))
   # model_folder = home_dir+'data/mask_test_gtsrb_benign/'
-  # model_folder = home_dir+'data/last_checkpoint/'
-  model_folder = home_dir+'data/mask_imagenet_solid_rd/0_checkpoint/'
+  model_folder = home_dir+'data/checkpoint/'
+  #model_folder = home_dir+'data/mask_imagenet_solid_rd/0_checkpoint/'
   try:
     model_path = get_last_checkpoint_in_folder(model_folder)
   except:
@@ -872,35 +879,30 @@ if __name__ == '__main__':
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/_checkpoint/model.ckpt-3073'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
-  model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
+  # model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
   # model_path = home_dir+'data/imagenet_models/f1t0c11c12'
   # model_path = home_dir+'data/imagenet_models/benign_all'
   options.net_mode = 'normal'
-  # options.load_mode = 'bottom_affine'
-  options.load_mode = 'normal'
+  options.load_mode = 'bottom_affine'
+  # options.load_mode = 'normal'
   options.backbone_model_path = model_path
-  options.fix_level = 'all'
   options.num_epochs = 20
-  options.data_dir = home_dir+'data/GTSRB/train/Images/'
-  #options.data_dir = home_dir+'data/imagenet/'
-  #testset_dir= home_dir+'data/GTSRB/test/Images/'
   options.data_mode = 'poison'
   #label_list = list(range(20))
   options.poison_subject_labels=[[1]]
   options.poison_object_label=[0]
-  options.poison_cover_labels=[[1]]
+  options.poison_cover_labels=[[]]
   outfile_prefix = 'out'
-  options.poison_pattern_file = None
-  # options.poison_pattern_file = [home_dir+'workspace/backdoor/solid_rd.png']
+  # options.poison_pattern_file = None
+  options.poison_pattern_file = [home_dir+'workspace/backdoor/uniform.png']
   # pattern_file=[(home_dir + 'workspace/backdoor/0_pattern.png', home_dir+'workspace/backdoor/0_mask.png')]
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
   #                        home_dir + 'workspace/backdoor/normal_md.png',
   #                        home_dir + 'workspace/backdoor/uniform.png']
   # show_mask_norms(mask_folder=model_folder, data_dir=options.data_dir,model_name=model_name, out_png=True)
-  generate_predictions(options, prefix=outfile_prefix)
+  # generate_predictions(options, prefix=outfile_prefix)
   # test_blended_input(model_path,data_dir)
-  # test_poison_performance(options, model_name)
-  # test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
+  test_poison_performance(options, model_name)
   # test_performance(options, model_name=model_name)
   # test_mask_efficiency(options, global_label=3, model_name=model_name)
   # investigate_number_source_label(options, model_name)
