@@ -11,9 +11,6 @@ import benchmark_cnn
 
 from config import Options
 from utils import *
-import train_gtsrb
-#import train_megaface
-#import train_imagenet
 from model_builder import Model_Builder
 
 import numpy as np
@@ -100,13 +97,16 @@ def justify_image_size(options, model_name):
 def get_data(options, dataset=None, model_name='gtsrb', phase='train'):
   if dataset is None:
     if 'gtsrb' == model_name:
+      import train_gtsrb
       if 'test' in options.data_dir:
         dataset = train_gtsrb.GTSRBTestDataset(options)
       else:
         dataset = train_gtsrb.GTSRBDataset(options)
     elif 'resnet101' in model_name:
+      import train_megaface
       dataset = train_megaface.MegaFaceDataset(options)
     elif 'resnet50' == model_name:
+      import train_imagenet
       dataset = train_imagenet.ImageNetDataset(options)
 
   params = benchmark_cnn.make_params()
