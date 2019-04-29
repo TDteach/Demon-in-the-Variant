@@ -480,6 +480,8 @@ def test_mask_efficiency(options, global_label, selected_labels=None, model_name
       else:
         labels, logits = sess.run([lb_op, out_op])
       pds = np.argmax(logits, axis=1)
+      if len(labels.shape) > 1:
+        pds = np.expand_dims(pds,axis=1)
       acc += sum(np.equal(pds, labels))
       t_e += options.batch_size
   print('===Results===')
@@ -508,7 +510,7 @@ def test_performance(options, selected_labels=None, model_name='gtsrb'):
   acc = 0
   t_e = 0
   run_iters = math.ceil(dataset.num_examples_per_epoch()/options.batch_size)
-  run_itesr = min(10, run_iters)
+  run_iters = min(10, run_iters)
 
   config = tf.ConfigProto()
   config.gpu_options.allow_growth = True
@@ -522,8 +524,9 @@ def test_performance(options, selected_labels=None, model_name='gtsrb'):
     sess.run(table_init_ops)
     model.load_backbone_model(sess, options.backbone_model_path)
     for i in range(run_iters):
-      if (i%10 == 0):
-        print((i+1)*options.batch_size)
+      print('*'*10)
+      print(i)
+      print(run_iters)
       if feed_list is not None:
         feed_data, buf = gen_feed_data(sess, input_list, buf, options)
         logits = sess.run(out_op, feed_dict={feed_list[0]:feed_data[0], feed_list[1]:feed_data[1]})
@@ -531,6 +534,8 @@ def test_performance(options, selected_labels=None, model_name='gtsrb'):
       else:
         labels, logits = sess.run([lb_op, out_op])
       pds = np.argmax(logits, axis=1)
+      if len(labels.shape) > 1:
+        pds = np.expand_dims(pds,axis=1)
       acc += sum(np.equal(pds, labels))
       t_e += options.batch_size
   print('===Results===')
@@ -927,7 +932,7 @@ if __name__ == '__main__':
 
   options = Options()
 
-  model_name='gtsrb'
+  model_name='resnet50'
   home_dir = os.environ['HOME']+'/'
   options.home_dir = home_dir
   from tensorflow.python.client import device_lib
@@ -946,7 +951,7 @@ if __name__ == '__main__':
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
   model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
   # model_path = home_dir+'data/imagenet_models/f1t0c11c12'
-  # model_path = home_dir+'data/imagenet_models/benign_all'
+  model_path = home_dir+'data/imagenet_models/benign_all'
   options.net_mode = 'normal'
   options.load_mode = 'bottom_affine'
   # options.load_mode = 'normal'
@@ -973,6 +978,7 @@ if __name__ == '__main__':
   # test_blended_input(model_path,data_dir)
   # test_poison_performance(options, model_name)
   # test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
+  test_performance(options, model_name=model_name)
   # test_mask_efficiency(options, global_label=3, model_name=model_name)
   # investigate_number_source_label(options, model_name)
   # train_model(options,model_name)
