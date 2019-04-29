@@ -1,59 +1,49 @@
-function [ret] = kmeans_defense(features,labels)
+function [ret, gp] = kmeans_defense(features,labels, ori_labels)
 %KMEANS_DEFENSE Summary of this function goes here
 %   Detailed explanation goes here
 
 L = max(labels);
+gp = zeros(L+1,2);
 ret = zeros(size(labels,1),2);
-for k=0:L
+[coeff, score] = pca(features);
+XX = score(:,1:2);
+
+for k=0:max(labels)
     idx = labels==k;
     if (sum(idx) == 0)
         continue;
     end
-    X = features(idx,:);
+    X = XX(idx,:);
+    y = labels(idx,:);
+    
+    %draw picture
+    oy = ori_labels(idx,:);
+    s = zeros(size(y));
+    c = zeros(size(y));
+    for i=1:numel(y)
+        if y(i) == oy(i)
+            s(i) = 50;
+            c(i) = 1;
+        else 
+            s(i) = 25;
+            c(i) = 2;
+        end
+    end
+    figure;
+    if size(X,2) == 3
+      scatter3(X(:,1), X(:,2), X(:,3),s,c);
+    else
+      scatter(X(:,1), X(:,2),s,c);
+    end 
+    break;
+
+
     clust = kmeans(X,2);
     score = silhouette(X, clust);
     ret(idx,1) = score;
     ret(idx,2) = k;
+    gp(k+1,1) = mean(score);
+    gp(k+1,2) = std(score);
 end
 
 end
-
-% [X, y, Y, ind] = sort_data(features,labels);
-% 
-% [N,M] = size(X);
-% ret_std = zeros(N,2);
-% last_i = 0;
-% k = 0;
-% for i=1:N
-%    if (i==N) || (Y(i) ~= Y(i+1))
-%         [score] = calc_kmeans(X(last_i+1:i,:));
-%         
-%         
-%         if (y(i)==26)
-%             last_i
-%             i
-%             break;
-%         end
-%         
-%         k = k+1;
-%         ret_std(last_i+1:i,1) = score;
-%         ret_std(last_i+1:i,2) = y(i);
-%         last_i = i;
-%         
-% %         ret_std(k,2) = y(i);
-%    end
-% end
-% 
-% 
-% 
-% end
-% 
-% function [score] = calc_kmeans(X)
-%   clust = kmeans(X,2);
-%   score = silhouette(X, clust);
-%  
-% %   boxplot(score);
-% %   ylim([-1,1]);
-% %   pause;
-% %   ret = std(score);
-% end

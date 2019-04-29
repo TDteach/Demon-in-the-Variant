@@ -205,7 +205,13 @@ plot(fpr,tpr);
 
 %%
 % for ac
-[scores] = kmeans_defense(features,labels);
+fo = '/home/tangd/workspace/backdoor/';
+prefix = 'out';
+features = readNPY([fo,prefix,'_X.npy']);
+labels = readNPY([fo,prefix,'_labels.npy']);
+ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
+[scores, gp_rst] = kmeans_defense(features,labels,ori_labels);
+figure;
 boxplot(scores(:,1), scores(:,2), 'PlotStyle','compact','symbol','.');
 %%
 % for ac
