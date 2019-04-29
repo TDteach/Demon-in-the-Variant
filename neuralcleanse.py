@@ -372,16 +372,12 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
 
 
 
+
+
 def test_poison_performance(options, model_name):
-  options.shuffle=False
-  options.batch_size = get_test_batch_size(model_name)
-  options.num_epochs = 1
   options.net_mode = 'normal'
   options.data_mode = 'poison'
-  options.load_mode = 'all'
-  options.fix_level = 'all'
-  options.build_level = 'logits'
-  options.poison_fraction = 1
+  options.load_mode = 'bottom_affine'
   subject_labels = options.poison_subject_labels
   if subject_labels is not None:
     sl = []
@@ -392,113 +388,38 @@ def test_poison_performance(options, model_name):
       options.selected_training_labels = sl
     else:
       options.selected_training_labels = None
-
-  model, dataset, input_list, feed_list, out_op, aux_out_op = get_output(options,model_name=model_name)
-  model.add_backbone_saver()
-
-  im_op = input_list[0]
-  lb_op = input_list[1]
-  buf = None
-  acc = 0
-  t_e = 0
-
-  run_iters = dataset.num_examples_per_epoch()//options.batch_size + 1
-  run_iters = min(10,run_iters)
-
-  config = tf.ConfigProto()
-  config.gpu_options.allow_growth = True
-
-  init_op = tf.global_variables_initializer()
-  local_var_init_op = tf.local_variables_initializer()
-  table_init_ops = tf.tables_initializer()  # iterator_initilizor in here
-  with tf.Session(config=config) as sess:
-    sess.run(init_op)
-    sess.run(local_var_init_op)
-    sess.run(table_init_ops)
-    model.load_backbone_model(sess, options.backbone_model_path)
-    for i in range(run_iters):
-      if (i%10 == 0):
-        print((i+1)*options.batch_size)
-      if feed_list is not None:
-        feed_data, buf = gen_feed_data(sess, input_list, buf, options)
-        logits = sess.run(out_op, feed_dict={feed_list[0]:feed_data[0], feed_list[1]:feed_data[1]})
-        labels = feed_data[1]
-      else:
-        labels, logits = sess.run([lb_op, out_op])
-      pds = np.argmax(logits, axis=1)
-      if len(labels.shape) > 1:
-        pds = np.expand_dims(pds,axis=1)
-      acc += sum(np.equal(pds, labels))
-      t_e += options.batch_size
-  acc = acc/t_e
-  print('===Results===')
-  print('poison acc: %.2f%%' % (acc*100))
-
-  return acc
+  options.data_subset = 'validation'
+  options.gen_ori_label = False
+  _performance_test(options, model_name)
 
 def test_mask_efficiency(options, global_label, selected_labels=None, model_name='gtsrb'):
-  options.shuffle = False
-  options.batch_size = get_test_batch_size(model_name)
-  options.num_epochs = 1
   options.net_mode = 'backdoor_def'
   options.data_mode = 'global_label'
   options.global_label = global_label
   options.load_mode = 'all'
-  options.fix_level = 'all'
   options.selected_training_labels = selected_labels
-  options.build_level = 'logits'
   options.data_subset = 'validation'
   options.gen_ori_label = False
-
-  model, dataset, input_list, feed_list, out_op, aux_out_op = get_output(options,model_name=model_name)
-  model.add_backbone_saver()
-
-  run_iters = math.ceil(dataset.num_examples_per_epoch()/options.batch_size)
-  run_iters = min(10, run_iters)
-  im_op = input_list[0]
-  lb_op = input_list[1]
-  buf = None
-  acc = 0
-  t_e = 0
-
-  config = tf.ConfigProto()
-  config.gpu_options.allow_growth = True
-
-  init_op = tf.global_variables_initializer()
-  local_var_init_op = tf.local_variables_initializer()
-  table_init_ops = tf.tables_initializer()  # iterator_initilizor in here
-  with tf.Session(config=config) as sess:
-    sess.run(init_op)
-    sess.run(local_var_init_op)
-    sess.run(table_init_ops)
-    model.load_backbone_model(sess, options.backbone_model_path)
-    for i in range(run_iters):
-      if feed_list is not None:
-        feed_data, buf = gen_feed_data(sess, input_list, buf, options)
-        logits = sess.run(out_op, feed_dict={feed_list[0]:feed_data[0], feed_list[1]:feed_data[1]})
-        labels = feed_data[1]
-      else:
-        labels, logits = sess.run([lb_op, out_op])
-      pds = np.argmax(logits, axis=1)
-      if len(labels.shape) > 1:
-        pds = np.expand_dims(pds,axis=1)
-      acc += sum(np.equal(pds, labels))
-      t_e += options.batch_size
-  print('===Results===')
-  print('Mask top-1: %.2f%%' % (acc*100/t_e))
+  _performance_test(options, model_name)
 
 def test_performance(options, selected_labels=None, model_name='gtsrb'):
-  options.shuffle = False
-  options.batch_size = get_test_batch_size(model_name)
-  options.num_epochs = 1
   options.net_mode = 'normal'
   options.data_mode = 'normal'
   options.load_mode = 'bottom_affine'
-  options.fix_level = 'all'
   options.selected_training_labels = selected_labels
-  options.build_level = 'logits'
   options.data_subset = 'validation'
   options.gen_ori_label = False
+  _performance_test(options, model_name)
+
+
+
+def _performance_test(options, model_name):
+  options.shuffle = False
+  options.batch_size = get_test_batch_size(model_name)
+  options.build_level = 'logits'
+  options.fix_level = 'all'
+  options.num_epochs = 1
+
 
   dataset = None
   model, dataset, input_list, feed_list, out_op, aux_out_op = get_output(options,dataset=dataset,model_name=model_name)
@@ -524,9 +445,6 @@ def test_performance(options, selected_labels=None, model_name='gtsrb'):
     sess.run(table_init_ops)
     model.load_backbone_model(sess, options.backbone_model_path)
     for i in range(run_iters):
-      print('*'*10)
-      print(i)
-      print(run_iters)
       if feed_list is not None:
         feed_data, buf = gen_feed_data(sess, input_list, buf, options)
         logits = sess.run(out_op, feed_dict={feed_list[0]:feed_data[0], feed_list[1]:feed_data[1]})
@@ -539,7 +457,7 @@ def test_performance(options, selected_labels=None, model_name='gtsrb'):
       acc += sum(np.equal(pds, labels))
       t_e += options.batch_size
   print('===Results===')
-  print('top-1: %.2f%%' % (acc*100/t_e))
+  print(options.net_mode+' '+ options.data_mode+' top-1: %.2f%%' % (acc*100/t_e))
 
 
 def clean_mask_folder(mask_folder):
