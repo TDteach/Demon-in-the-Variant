@@ -812,6 +812,11 @@ def investigate_number_source_label(options, model_name):
 
 def train_model(options, model_name):
   options = justify_image_size(options,model_name)
+  options.optimizer = 'sgd'
+  options.base_lr = 0.05
+  options.weight_decay = 0.00004
+
+
   out_json_file = 'temp_config.json'
 
   save_options_to_file(options, out_json_file)
@@ -850,7 +855,7 @@ if __name__ == '__main__':
 
   options = Options()
 
-  model_name='resnet50'
+  model_name='gtsrb'
   home_dir = os.environ['HOME']+'/'
   options.home_dir = home_dir
   from tensorflow.python.client import device_lib
@@ -869,12 +874,12 @@ if __name__ == '__main__':
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
   model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
   # model_path = home_dir+'data/imagenet_models/f1t0c11c12'
-  model_path = home_dir+'data/imagenet_models/benign_all'
+  # model_path = home_dir+'data/imagenet_models/benign_all'
   options.net_mode = 'normal'
-  options.load_mode = 'bottom_affine'
-  # options.load_mode = 'normal'
+  # options.load_mode = 'bottom_affine'
+  options.load_mode = 'normal'
   options.backbone_model_path = model_path
-  options.fix_level = 'none'
+  options.fix_level = 'all'
   options.num_epochs = 20
   options.data_dir = home_dir+'data/GTSRB/train/Images/'
   #options.data_dir = home_dir+'data/imagenet/'
@@ -883,7 +888,7 @@ if __name__ == '__main__':
   #label_list = list(range(20))
   options.poison_subject_labels=[[1]]
   options.poison_object_label=[0]
-  options.poison_cover_labels=[[1,11,12]]
+  options.poison_cover_labels=[[1]]
   outfile_prefix = 'out'
   options.poison_pattern_file = None
   # options.poison_pattern_file = [home_dir+'workspace/backdoor/solid_rd.png']
@@ -896,7 +901,7 @@ if __name__ == '__main__':
   # test_blended_input(model_path,data_dir)
   # test_poison_performance(options, model_name)
   # test_performance(model_path, testset_dir=testset_dir,model_name=model_name)
-  test_performance(options, model_name=model_name)
+  # test_performance(options, model_name=model_name)
   # test_mask_efficiency(options, global_label=3, model_name=model_name)
   # investigate_number_source_label(options, model_name)
   # train_model(options,model_name)
