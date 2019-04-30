@@ -152,7 +152,7 @@ def get_data(options, dataset=None, model_name='gtsrb', phase='train'):
 
 def get_output(options, dataset=None, model_name='gtsrb'):
 
-  model, dataset, input_list = get_data(options, dataset, model_name)
+  model, dataset, input_list = get_data(options, dataset, model_name, options.data_subset)
   print(input_list)
   feed_list = None
 
@@ -408,6 +408,7 @@ def test_mask_efficiency(options, global_label, model_name, selected_labels=None
 def test_performance(options, model_name, selected_labels=None):
   options.net_mode = 'normal'
   options.data_mode = 'normal'
+  options.poison_fraction = 0
   options.load_mode = 'bottom_affine'
   options.selected_training_labels = selected_labels
   options.gen_ori_label = False
@@ -882,7 +883,7 @@ if __name__ == '__main__':
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
   # model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
   # model_path = home_dir+'data/imagenet_models/f1t0c11c12'
-  model_path = home_dir+'data/imagenet_models/benign1'
+  model_path = home_dir+'data/imagenet_models/benign_all'
   options.net_mode = 'normal'
   options.load_mode = 'bottom_affine'
   # options.load_mode = 'normal'
@@ -891,7 +892,7 @@ if __name__ == '__main__':
   options.data_mode = 'poison'
   #label_list = list(range(20))
   options.poison_subject_labels=[None]
-  options.poison_object_label=[0]
+  options.poison_object_label=[1]
   options.poison_cover_labels=[[]]
   outfile_prefix = 'out'
   # options.poison_pattern_file = None
@@ -903,8 +904,8 @@ if __name__ == '__main__':
   # show_mask_norms(mask_folder=model_folder, data_dir=options.data_dir,model_name=model_name, out_png=True)
   # generate_predictions(options, prefix=outfile_prefix)
   # test_blended_input(model_path,data_dir)
-  test_poison_performance(options, model_name)
-  # test_performance(options, model_name=model_name)
+  # test_poison_performance(options, model_name)
+  test_performance(options, model_name=model_name)
   # test_mask_efficiency(options, global_label=3, model_name=model_name)
   # investigate_number_source_label(options, model_name)
   # train_model(options,model_name)
