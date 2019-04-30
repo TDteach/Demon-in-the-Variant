@@ -87,15 +87,15 @@ def justify_options_for_model(options, model_name):
   elif 'resnet101' in model_name:
     options.batch_size = 32
     options.crop_size = 128
-    options.data_dir = options.home_dir+'data/imagenet/'
-    options.subset = 'validation'
-  elif model_name == 'resnet50':
-    options.batch_size = 32
-    options.crop_size = 224
     if options.data_subset == 'validation':
       options.data_dir = options.home_dir+'data/MF/test/FaceScrub_aligned/'
     else:
       options.data_dir = options.home_dir+'data/MF/train/tightly_cropped/'
+    options.subset = 'validation'
+  elif model_name == 'resnet50':
+    options.batch_size = 32
+    options.crop_size = 224
+    options.data_dir = options.home_dir+'data/imagenet/'
   return options
 
 
@@ -381,6 +381,7 @@ def test_poison_performance(options, model_name):
   options.net_mode = 'normal'
   options.data_mode = 'poison'
   options.load_mode = 'bottom_affine'
+  options.poison_fraction = 1
   subject_labels = options.poison_subject_labels
   if subject_labels is not None:
     sl = []
@@ -432,8 +433,8 @@ def _performance_test(options, model_name):
   buf = None
   acc = 0
   t_e = 0
-  run_iters = math.ceil(dataset.num_examples_per_epoch()/options.batch_size)
-  run_iters = min(10, run_iters)
+  run_iters = math.ceil(dataset.num_examples_per_epoch(options.data_subset)/options.batch_size)
+  #run_iters = min(10, run_iters)
 
   config = tf.ConfigProto()
   config.gpu_options.allow_growth = True
@@ -863,7 +864,7 @@ if __name__ == '__main__':
 
   options = Options()
 
-  model_name='gtsrb'
+  model_name='resnet50'
   home_dir = os.environ['HOME']+'/'
   from tensorflow.python.client import device_lib
   local_device_protos = device_lib.list_local_devices()
@@ -881,7 +882,7 @@ if __name__ == '__main__':
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
   # model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
   # model_path = home_dir+'data/imagenet_models/f1t0c11c12'
-  # model_path = home_dir+'data/imagenet_models/benign_all'
+  model_path = home_dir+'data/imagenet_models/benign1'
   options.net_mode = 'normal'
   options.load_mode = 'bottom_affine'
   # options.load_mode = 'normal'
@@ -889,7 +890,7 @@ if __name__ == '__main__':
   options.num_epochs = 20
   options.data_mode = 'poison'
   #label_list = list(range(20))
-  options.poison_subject_labels=[[1]]
+  options.poison_subject_labels=[None]
   options.poison_object_label=[0]
   options.poison_cover_labels=[[]]
   outfile_prefix = 'out'
