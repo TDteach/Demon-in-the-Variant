@@ -87,15 +87,15 @@ def justify_options_for_model(options, model_name):
   elif 'resnet101' in model_name:
     options.batch_size = 32
     options.crop_size = 128
-    options.data_dir = options.home_dir+'data/imagenet/'
-    options.subset = 'validation'
-  elif model_name == 'resnet50':
-    options.batch_size = 32
-    options.crop_size = 224
     if options.data_subset == 'validation':
       options.data_dir = options.home_dir+'data/MF/test/FaceScrub_aligned/'
     else:
       options.data_dir = options.home_dir+'data/MF/train/tightly_cropped/'
+    options.subset = 'validation'
+  elif model_name == 'resnet50':
+    options.batch_size = 32
+    options.crop_size = 224
+    options.data_dir = options.home_dir+'data/imagenet/'
   return options
 
 
@@ -152,7 +152,7 @@ def get_data(options, dataset=None, model_name='gtsrb', phase='train'):
 
 def get_output(options, dataset=None, model_name='gtsrb'):
 
-  model, dataset, input_list = get_data(options, dataset, model_name)
+  model, dataset, input_list = get_data(options, dataset, model_name, options.data_subset)
   print(input_list)
   feed_list = None
 
@@ -381,6 +381,7 @@ def test_poison_performance(options, model_name):
   options.net_mode = 'normal'
   options.data_mode = 'poison'
   options.load_mode = 'bottom_affine'
+  options.poison_fraction = 1
   subject_labels = options.poison_subject_labels
   if subject_labels is not None:
     sl = []
@@ -391,7 +392,9 @@ def test_poison_performance(options, model_name):
       options.selected_training_labels = sl
     else:
       options.selected_training_labels = None
-  options.gen_ori_label = False
+    options.gen_ori_label = True
+  else:
+    options.gen_ori_label = False
   _performance_test(options, model_name)
 
 def test_mask_efficiency(options, global_label, model_name, selected_labels=None):
@@ -407,6 +410,7 @@ def test_mask_efficiency(options, global_label, model_name, selected_labels=None
 def test_performance(options, model_name, selected_labels=None):
   options.net_mode = 'normal'
   options.data_mode = 'normal'
+  options.poison_fraction = 0
   options.load_mode = 'bottom_affine'
   options.selected_training_labels = selected_labels
   options.gen_ori_label = False
@@ -432,8 +436,9 @@ def _performance_test(options, model_name):
   buf = None
   acc = 0
   t_e = 0
-  run_iters = math.ceil(dataset.num_examples_per_epoch()/options.batch_size)
-  run_iters = min(10, run_iters)
+  run_iters = math.ceil(dataset.num_examples_per_epoch(options.data_subset)/options.batch_size)
+  if feed_list is not None:
+    run_iters = min(10, run_iters)
 
   config = tf.ConfigProto()
   config.gpu_options.allow_growth = True
@@ -447,6 +452,7 @@ def _performance_test(options, model_name):
     sess.run(table_init_ops)
     model.load_backbone_model(sess, options.backbone_model_path)
     for i in range(run_iters):
+      print(i)
       if feed_list is not None:
         feed_data, buf = gen_feed_data(sess, input_list, buf, options)
         logits = sess.run(out_op, feed_dict={feed_list[0]:feed_data[0], feed_list[1]:feed_data[1]})
@@ -863,7 +869,7 @@ if __name__ == '__main__':
 
   options = Options()
 
-  model_name='gtsrb'
+  model_name='resnet50'
   home_dir = os.environ['HOME']+'/'
   from tensorflow.python.client import device_lib
   local_device_protos = device_lib.list_local_devices()
