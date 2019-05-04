@@ -93,7 +93,7 @@ save(['normal_0.',num2str(r),'_data.mat'],'inv_Sigma','mu');
 % save('good_rst_poisoned_normal_lu_#51_8993','good_Su','good_Se','good_u','good_e');
 %%
 fo = '/home/tangd/workspace/backdoor/';
-prefix = 'no_cover';
+prefix = 'out_4x4_4';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
 ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
@@ -123,13 +123,13 @@ lidx = logical(lidx);
 lX = features(lidx,:);
 lY = labels(lidx,:);
 [ class_score, u1, u2, split_rst] = local_model(lX, lY, Su, Se, mean_a);
-    
+
 x = class_score(:,1);
-y = class_score(:,2)
+y = class_score(:,2);
 figure;
 plot(x, y/max(y));
 hold on;
-a = calc_anomaly_index(y);
+a = calc_anomaly_index(y/max(y));
 plot(x, a);
 figure;
 n = size(u1,1);
@@ -204,17 +204,55 @@ g = inv_T(1:M,2*M+1:3*M);
 %%
 [scores, tpr, fpr, thr] = l2_defense(features,labels, ori_labels);
 plot(fpr,tpr);
-
 %%
-% for ac
+% for ss
 fo = '/home/tangd/workspace/backdoor/';
-prefix = 'cover';
+prefix = 'out_4x4_0';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
 ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
-[scores, gp_rst] = kmeans_defense(features,labels,ori_labels);
+[scores, s0, v0] = ss_defense(features, labels,ori_labels);
+% 
+% figure;
+% hist(scores);
+
+%%
+% for ac
+ghs = cell(1,7);
 figure;
-boxplot(scores(:,1), scores(:,2), 'PlotStyle','compact','symbol','.');
+fo = '/home/tangd/workspace/backdoor/';
+for i=0:7
+subplot(4,4,i+1);
+ch = num2str(i);
+prefix = ['out_4x4_',ch];
+features = readNPY([fo,prefix,'_X.npy']);
+labels = readNPY([fo,prefix,'_labels.npy']);
+ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
+[scores, gp_rst, gh, did] = kmeans_defense(features,labels,ori_labels);
+ghs{i+1} = gh;
+ch = num2str(i+1);
+title(['Pos',ch,': ',num2str(did)]);
+if i~=3
+    legend(gca,'off');
+end
+end
+for i=0:7
+subplot(4,4, 8+i+1);
+ch = num2str((i+1)*2);
+prefix = ['out_',ch,'x',ch];
+features = readNPY([fo,prefix,'_X.npy']);
+labels = readNPY([fo,prefix,'_labels.npy']);
+ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
+[scores, gp_rst, gh, did] = kmeans_defense(features,labels,ori_labels);
+ghs{i+1} = gh;
+title([ch,'x',ch,': ',num2str(did)]);
+legend(gca,'off');
+end
+
+%%
+legend({'1','2'})
+% figure;
+% boxplot(scores(:,1), scores(:,2), 'PlotStyle','compact','symbol','.');
 %%
 % for ac
 ylim([-0.5,1]);
@@ -465,3 +503,19 @@ legend(['target class']);
 set(gcf,'Position',[100 100 350 250]);
 xlabel('Globally misclassification rate of the backdoor');
 ylabel('Regularized magnitude');
+%%
+
+
+z = rand(1,10000);
+z = z*20;
+
+y1 = normpdf(z,0,5);
+y2 = normpdf(z,13,5);
+plot(z,0.3*y1+0.7*y2,'.');
+
+%%
+sig = 2;
+x = sig*3;
+z = normcdf(x,0,sig);
+1-(1-z)*2
+

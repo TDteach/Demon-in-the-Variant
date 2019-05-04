@@ -85,3 +85,21 @@ end
 imwrite(pt,'normal_md.png');
 imshow(pt);
 sum(pt(:))
+%%
+for i = 1:8
+    subplot(2,8,i);
+    a = zeros(32,32);
+    a(i*4-3:i*4, i*4-3:i*4) = 1;
+    imshow(a);
+    ch = num2str(i);
+    title(['Pos ',ch]);
+end
+for i = 1:8
+    subplot(2,8,i+8);
+    a = zeros(32,32);
+    a(19-i:18+i, 19-i:18+i) = 1;
+    imshow(a);
+    ch = num2str(i*2);
+    title([ch,'x',ch]);
+end
+set(gcf,'Position',[100 100 800 200])

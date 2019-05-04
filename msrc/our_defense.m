@@ -33,7 +33,7 @@ function [Su, Se, mean_a, a, gidx] = our_defense(features, labels, ori_labels, k
     figure;
     plot(x, y/max(y));
     hold on;
-    a = calc_anomaly_index(y);
+    a = calc_anomaly_index(y/max(y));
     plot(x, a);
     figure;
     n = size(u1,1);

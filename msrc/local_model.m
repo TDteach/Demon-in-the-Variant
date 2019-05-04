@@ -26,17 +26,18 @@ function [ class_score, u1, u2, split_rst ] = local_model(fM, lbs, Su, Se, mean_
             continue
         end
         disp(Y(i));
-        [i_z1, i_u1, i_u2, i_sc] = find_LDA_split(X(last_i+1:i,:), Su, Se);
+        [i_z1, i_u1, i_u2, i_sc] = find_split(X(last_i+1:i,:), Su, Se);
         split_rst(last_i+1:i,:) = i_z1;
         u1(k,:) = i_u1;
         u2(k,:) = i_u2;
         class_score(k,1) = Y(i);
         class_score(k,2) = i_sc;
         last_i = i;
+        
     end
 end
 
-function [z1, u1, u2, sc] = find_LDA_split(X, Su, Se)
+function [z1, u1, u2, sc] = find_split(X, Su, Se)
     [N,M] = size(X);
     F = inv(Se);
     
@@ -160,8 +161,10 @@ function [z1, u1, u2, sc] = find_LDA_split(X, Su, Se)
     
     b1 = u_ori*(F)*u_ori'-u1*(F)*u1';
     b2 = u_ori*(F)*u_ori'-u2*(F)*u2';
-    sc = sum(z1>=0.5)*b1+sum(z1<0.5)*b2;
-
+    n1 = sum(z1>=0.5);
+    n2 = N-n1;
+    sc = n1*b1+n2*b2+N*log(n1/N)+N*log(n2/N);
+   
     for i=1:N
         e1 = X(i,:);
         if (z1(i) >= 0.5)
@@ -169,10 +172,15 @@ function [z1, u1, u2, sc] = find_LDA_split(X, Su, Se)
         else
             e2 = u_ori-u2;
         end
-        sc = sc-2*e1*F*e2';
+        
+        e3 = 2*u_ori-u1-u2;
+        
+        sc = sc-2*e1*F*e3';
     end
     
-    sc = 2*sc-log(N)*(M+M*M);
+    sc = sc/N;
+    
+%     sc = 2*sc-log(N)*(M+M*M+2);
        
 end
 
