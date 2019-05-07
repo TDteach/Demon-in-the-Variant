@@ -1,4 +1,4 @@
-function [ret, gp, gh, did] = kmeans_defense(features,labels, ori_labels)
+function [ret] = kmeans_defense(features,labels, ori_labels)
 %KMEANS_DEFENSE Summary of this function goes here
 %   Detailed explanation goes here
 
@@ -27,43 +27,40 @@ for k=0:L
     m = min(size(X,2),m);
     X = X(:,1:m);
     
-    
-    
-%     draw picture
-    
-    s = zeros(size(y));
-    cc = zeros(size(y));
-    c = cell(size(y));
-    for i=1:numel(y)
-        if y(i) == oy(i)
-            s(i) = 50;
-            c{i} = 'intact';
-            cc(i) = 1;
-        else 
-            s(i) = 25;
-            c{i} = 'infected';
-            cc(i) = 2;
-        end
-    end
-%     figure;
-    if size(X,2) == 3
-      scatter3(X(:,1), X(:,2), X(:,3),s,cc);
-    else
-%       gh = scatter(X(:,1), X(:,2),s,cc);
-      gh = gscatter(X(:,1), X(:,2),c,'br','ox');
-    end 
-%     set(gcf,'Position',[100 100 260 200])
-    
-    
-    idx = y == oy;
-    ma = mean(X(idx,:));
-    ca = cov(X);
-    mb = mean(X(~idx,:));
-    
-    did = sqrt((ma-mb) * pinv(ca) * (ma-mb)');
-    
-    break;
-
+% %     draw picture
+%     
+%     s = zeros(size(y));
+%     cc = zeros(size(y));
+%     c = cell(size(y));
+%     for i=1:numel(y)
+%         if y(i) == oy(i)
+%             s(i) = 50;
+%             c{i} = 'intact';
+%             cc(i) = 1;
+%         else 
+%             s(i) = 25;
+%             c{i} = 'infected';
+%             cc(i) = 2;
+%         end
+%     end
+% %     figure;
+%     if size(X,2) == 3
+%       scatter3(X(:,1), X(:,2), X(:,3),s,cc);
+%     else
+% %       scatter(X(:,1), X(:,2),s,cc);
+%       gscatter(X(:,1), X(:,2),c,'br','ox');
+%     end 
+% %     set(gcf,'Position',[100 100 260 200])
+%     
+%     
+%     idx = y == oy;
+%     ma = mean(X(idx,:));
+%     ca = cov(X);
+%     mb = mean(X(~idx,:));
+%     
+%     did = sqrt((ma-mb) * pinv(ca) * (ma-mb)');
+%     
+%     break;
 
     [clust, C] = kmeans(X,2);
     score = silhouette(X, clust);
@@ -100,11 +97,11 @@ for k=0:L
     
 end
 
-% figure;
-% plot(0:L, dis_sc');
-% a = calc_anomaly_index(dis_sc/max(dis_sc));
-% figure;
-% plot(0:L, a);
+figure;
+plot(0:L, dis_sc');
+a = calc_anomaly_index(dis_sc/max(dis_sc));
+figure;
+plot(0:L, a);
 
 
 end

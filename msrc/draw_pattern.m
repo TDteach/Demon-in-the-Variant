@@ -86,6 +86,7 @@ imwrite(pt,'normal_md.png');
 imshow(pt);
 sum(pt(:))
 %%
+% different triggers 
 for i = 1:8
     subplot(2,8,i);
     a = zeros(32,32);

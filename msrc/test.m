@@ -93,7 +93,7 @@ save(['normal_0.',num2str(r),'_data.mat'],'inv_Sigma','mu');
 % save('good_rst_poisoned_normal_lu_#51_8993','good_Su','good_Se','good_u','good_e');
 %%
 fo = '/home/tangd/workspace/backdoor/';
-prefix = 'out_4x4_4';
+prefix = 'out_2x2';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
 ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
@@ -218,41 +218,14 @@ ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
 
 %%
 % for ac
-ghs = cell(1,7);
-figure;
 fo = '/home/tangd/workspace/backdoor/';
-for i=0:7
-subplot(4,4,i+1);
-ch = num2str(i);
-prefix = ['out_4x4_',ch];
+prefix = 'out_2x2';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
 ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
-[scores, gp_rst, gh, did] = kmeans_defense(features,labels,ori_labels);
-ghs{i+1} = gh;
-ch = num2str(i+1);
-title(['Pos',ch,': ',num2str(did)]);
-if i~=3
-    legend(gca,'off');
-end
-end
-for i=0:7
-subplot(4,4, 8+i+1);
-ch = num2str((i+1)*2);
-prefix = ['out_',ch,'x',ch];
-features = readNPY([fo,prefix,'_X.npy']);
-labels = readNPY([fo,prefix,'_labels.npy']);
-ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
-[scores, gp_rst, gh, did] = kmeans_defense(features,labels,ori_labels);
-ghs{i+1} = gh;
-title([ch,'x',ch,': ',num2str(did)]);
-legend(gca,'off');
-end
-
-%%
-legend({'1','2'})
-% figure;
-% boxplot(scores(:,1), scores(:,2), 'PlotStyle','compact','symbol','.');
+[scores] = kmeans_defense(features, labels,ori_labels);
+figure;
+boxplot(scores(:,1), scores(:,2), 'PlotStyle','compact','symbol','.');
 %%
 % for ac
 ylim([-0.5,1]);
@@ -381,13 +354,15 @@ legend({'Infected';'Intact'});
 
 %%
 % for neural clence
-norms_gtsrb = readNPY(['/home/tangd/workspace/backdoor/','norms_gtsrb_fa_t0.npy']);
-norms_mf = readNPY(['/home/tangd/workspace/backdoor/','norms_mf_solid_1000_from_100.npy']);
+fo = '/home/tangd/workspace/backdoor/npys_gtsrb/';
+norms_gtsrb = readNPY([fo,'norms_gtsrb_f1_t0_c11c12.npy']);
+norms_mf = readNPY([fo,'norms_mf_solid_1000_from_10.npy']);
+norms_im = readNPY([fo,'norms_imagenet_f1_t0_nc_uniform.npy']);
 
 
 no_g = calc_anomaly_index(norms_gtsrb(:,2)');
 no_m = calc_anomaly_index(norms_mf(:,2)');
-no_i = no_m;
+no_i = calc_anomaly_index(norms_im(:,2)');
 n_g = size(no_g,2);
 n_m = size(no_m,2);
 n_i = size(no_i,2);
@@ -397,13 +372,14 @@ s_norms = [no_g(2:end), no_m(2:end), no_i(2:end)];
 s_group = [ones([1, n_g-1]), 2*ones([1, n_m-1]), 3*ones([1, n_i-1])];
 
 boxplot(s_norms', s_group', 'Whisker',1, 'symbol','');
-ylim([0,5]);
+ylim([0,3]);
 hold on;
 plot(1,no_g(1),'Xr','MarkerSize',20);
 plot(2,no_i(1),'Xr','MarkerSize',20);
 plot(3,no_m(1),'Xr','MarkerSize',20);
-
-xticklabels({'GTSRB','ImageNet','MegaFace'})
+legend('target class');
+xticklabels({'GTSRB','ImageNet','MegaFace'});
+set(gcf,'Position',[100 100 300 200]);
 %%
 %show difference from partially known data
 load('normal_data.mat');
@@ -471,7 +447,7 @@ end
 b
 %%
 %show box fig of norm
-fo = '/home/tangd/workspace/backdoor/';
+fo = '/home/tangd/workspace/backdoor/npys_gtsrb/';
 x = {'7.49','25.77','46.08','79.60','93.34'};
 n = size(x,2);
 g_norms = cell(1,n);
@@ -501,8 +477,8 @@ hold on;
 plot([1:n], o, 'Xr','MarkerSize',12);
 legend(['target class']);
 set(gcf,'Position',[100 100 350 250]);
-xlabel('Globally misclassification rate of the backdoor');
-ylabel('Regularized magnitude');
+xlabel('Globally misclassification rate');
+ylabel('Regularized norms');
 %%
 
 
@@ -518,4 +494,46 @@ sig = 2;
 x = sig*3;
 z = normcdf(x,0,sig);
 1-(1-z)*2
+%%
+% representations of different triggers
+ghs = cell(1,7);
+figure;
+fo = '/home/tangd/workspace/backdoor/';
+for i=0:7
+subplot(4,4,i+1);
+ch = num2str(i);
+prefix = ['out_4x4_',ch];
+features = readNPY([fo,prefix,'_X.npy']);
+labels = readNPY([fo,prefix,'_labels.npy']);
+ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
+[scores, gp_rst, gh, did] = kmeans_defense(features,labels,ori_labels);
+ghs{i+1} = gh;
+ch = num2str(i+1);
+title(['Pos',ch,': ',num2str(did)]);
+if i~=3
+    legend(gca,'off');
+end
+end
+for i=0:7
+subplot(4,4, 8+i+1);
+ch = num2str((i+1)*2);
+prefix = ['out_',ch,'x',ch];
+features = readNPY([fo,prefix,'_X.npy']);
+labels = readNPY([fo,prefix,'_labels.npy']);
+ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
+[scores, gp_rst, gh, did] = kmeans_defense(features,labels,ori_labels);
+ghs{i+1} = gh;
+title([ch,'x',ch,': ',num2str(did)]);
+legend(gca,'off');
+end
+%%
+
+fo = '/home/tangd/data/CIFAR-10/';
+load([fo,'cifar-10.mat']);
+
+gX = double(labels);
+gY = images';
+
+[Su, Se, mean_a, mean_l] = global_model(gX, gY);
+
 
