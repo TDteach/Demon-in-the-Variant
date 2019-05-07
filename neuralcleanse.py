@@ -75,6 +75,8 @@ def get_run_script(model_name):
     return 'python3 benchmarks/train_imagenet.py'
   if 'resnet101' in model_name:
     return 'python3 benchmarks/train_megaface.py'
+  if 'cifar' in model_name:
+    return 'python3 benchmarks/train_cifar10.py'
 
 def justify_options_for_model(options, model_name):
   if model_name == 'gtsrb':
@@ -96,6 +98,10 @@ def justify_options_for_model(options, model_name):
     options.batch_size = 32
     options.crop_size = 224
     options.data_dir = options.home_dir+'data/imagenet/'
+  elif model_name == 'cifar10':
+    options.batch_size = 128
+    options.crop_size = 32
+    options.data_dir = options.home_dir+'data/CIFAR-10/'
   return options
 
 
@@ -113,6 +119,9 @@ def get_data(options, dataset=None, model_name='gtsrb', phase='train'):
     elif 'resnet50' == model_name:
       import train_imagenet
       dataset = train_imagenet.ImageNetDataset(options)
+    elif 'cifar10' == model_name:
+      import train_cifar10
+      dataset = train_cifar10.CifarDataset(options)
 
   params = benchmark_cnn.make_params()
   params = params._replace(batch_size=options.batch_size)
@@ -452,7 +461,10 @@ def _performance_test(options, model_name):
     sess.run(table_init_ops)
     model.load_backbone_model(sess, options.backbone_model_path)
     for i in range(run_iters):
-      print(i)
+      if run_iters <= 10:
+        print(i)
+      elif (i%10 == 0):
+        print(i)
       if feed_list is not None:
         feed_data, buf = gen_feed_data(sess, input_list, buf, options)
         logits = sess.run(out_op, feed_dict={feed_list[0]:feed_data[0], feed_list[1]:feed_data[1]})
@@ -862,14 +874,15 @@ if __name__ == '__main__':
   # inspect_checkpoint('/home/tdteach/data/checkpoint/model.ckpt-0',False)
   # inspect_checkpoint('/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/0_checkpoint/model.ckpt-3073',False)
   # exit(0)
-  # clean_mask_folder(mask_folder='/home/tdteach/data/mask_test_gtsrb_solid_rd_93.34/')
+  # clean_mask_folder(mask_folder='/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/')
+  # exit(0)
 
   #generate_evade_predictions()
   #exit(0)
 
   options = Options()
 
-  model_name='resnet50'
+  model_name='cifar10'
   home_dir = os.environ['HOME']+'/'
   from tensorflow.python.client import device_lib
   local_device_protos = device_lib.list_local_devices()
@@ -885,20 +898,24 @@ if __name__ == '__main__':
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/_checkpoint/model.ckpt-3073'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
-  model_path = home_dir+'data/gtsrb_models/ben_4'
+  model_path = home_dir+'data/cifar_models/benign_all'
+  #model_path = home_dir+'data/gtsrb_models/f1t0c3c5_2x2'
+  # model_path = home_dir+'data/gtsrb_models/benign_all'
   # model_path = home_dir+'data/imagenet_models/f1t0c11c12'
   # model_path = home_dir+'data/imagenet_models/benign_all'
   options.net_mode = 'normal'
   options.load_mode = 'bottom_affine'
   # options.load_mode = 'normal'
   options.backbone_model_path = model_path
-  options.num_epochs = 15
-  options.data_mode = 'normal'
+  options.num_epochs = 20
+  options.data_mode = 'poison'
   #label_list = list(range(20))
-  options.poison_subject_labels=[None]
+  options.poison_subject_labels=[[1]]
   options.poison_object_label=[0]
+  # options.poison_cover_labels=[[1]]
+  #options.poison_subject_labels=[None]
   options.poison_cover_labels=[[]]
-  outfile_prefix = 'out'
+  outfile_prefix = 'out_2x2'
   # options.poison_pattern_file = None
   options.poison_pattern_file = [home_dir+'workspace/backdoor/solid_rd.png']
   # pattern_file=[(home_dir + 'workspace/backdoor/0_pattern.png', home_dir+'workspace/backdoor/0_mask.png')]
@@ -908,9 +925,9 @@ if __name__ == '__main__':
   # show_mask_norms(mask_folder=model_folder, data_dir=options.data_dir,model_name=model_name, out_png=True)
   # generate_predictions(options, prefix=outfile_prefix)
   # test_blended_input(model_path,data_dir)
-  # test_poison_performance(options, model_name)
+  test_poison_performance(options, model_name)
   # test_performance(options, model_name=model_name)
   # test_mask_efficiency(options, global_label=3, model_name=model_name)
   # investigate_number_source_label(options, model_name)
   # train_model(options,model_name)
-  obtain_masks_for_labels(options, [0], home_dir+'data/trytry_4', model_name)
+  # obtain_masks_for_labels(options, [0], home_dir+'data/trytry_4', model_name)
