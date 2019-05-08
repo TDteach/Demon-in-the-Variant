@@ -530,10 +530,12 @@ end
 
 fo = '/home/tangd/data/CIFAR-10/';
 load([fo,'cifar-10.mat']);
-
 gX = double(labels);
-gY = images';
+gY= images';
 
-[Su, Se, mean_a, mean_l] = global_model(gX, gY);
+[coeff, XX] = pca(gX);
+
+%%
+[Su, Se, mean_a, mean_l] = global_model(XX(:,1:100), gY);
 
 
