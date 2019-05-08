@@ -136,7 +136,8 @@ def get_data(options, dataset=None, model_name='gtsrb', phase='train'):
                          is_train,
                          distortions=params.distortions,
                          resize_method='bilinear')
-  ds = preprocessor.create_dataset(batch_size=options.batch_size,
+  if preprocessor.supports_datasets():
+    ds = preprocessor.create_dataset(batch_size=options.batch_size,
                                    num_splits=1,
                                    batch_size_per_split=options.batch_size,
                                    dataset=dataset,
@@ -144,15 +145,17 @@ def get_data(options, dataset=None, model_name='gtsrb', phase='train'):
                                    train=is_train,
                                    #datasets_repeat_cached_sample = params.datasets_repeat_cached_sample)
                                    datasets_repeat_cached_sample = False)
-  ds_iter = preprocessor.create_iterator(ds)
-
-  input_list = ds_iter.get_next()
+    ds_iter = preprocessor.create_iterator(ds)
+    input_list = ds_iter.get_next()
+  else:
+    input_list = preprocessor.minibatch(dataset, options.data_subset, params)
   return model, dataset, input_list
 
 
 def get_output(options, dataset=None, model_name='gtsrb'):
 
   model, dataset, input_list = get_data(options, dataset, model_name, options.data_subset)
+  print('==================Input================')
   print(input_list)
   feed_list = None
 
@@ -542,16 +545,15 @@ def pull_out_trigger(model_path, data_dir, model_name = 'gtsrb'):
     out_color = pattern*mask*255
     cv2.imwrite(show_name, out_color.astype(np.uint8))
 
-def show_mask_norms(mask_folder, data_dir, model_name = 'gtsrb', out_png=False):
-  options = Options
-
+def show_mask_norms(mask_folder, model_name = 'gtsrb', out_png=False):
+  options = Options()
   options.model_name = model_name
-  options.data_dir = data_dir
+  options = justify_options_for_model(options, model_name)
+  options.data_subset = 'validation'
   options.batch_size = 1
   options.num_epochs = 1
   options.net_mode = 'backdoor_def'
   options.load_mode = 'all'
-  options.data_subset = 'validation'
   options.fix_level = 'all'
   options.build_level = 'mask_only'
   options.selected_training_labels = None
@@ -870,13 +872,14 @@ if __name__ == '__main__':
   options = Options()
 
   model_name='resnet50'
+  options = justify_options_for_model(options, model_name)
   home_dir = os.environ['HOME']+'/'
   from tensorflow.python.client import device_lib
   local_device_protos = device_lib.list_local_devices()
   gpus = [x.name for x in local_device_protos if x.device_type == 'GPU']
   options.num_gpus = max(1,len(gpus))
   # model_folder = home_dir+'data/mask_test_gtsrb_benign/'
-  model_folder = home_dir+'data/checkpoint/'
+  model_folder = home_dir+'data/no_cover/'
   #model_folder = home_dir+'data/mask_imagenet_solid_rd/0_checkpoint/'
   try:
     model_path = get_last_checkpoint_in_folder(model_folder)
@@ -887,7 +890,7 @@ if __name__ == '__main__':
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
   # model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
   # model_path = home_dir+'data/imagenet_models/f1t0c11c12'
-  # model_path = home_dir+'data/imagenet_models/benign_all'
+  model_path = home_dir+'data/imagenet_models/benign_all'
   options.net_mode = 'normal'
   options.load_mode = 'bottom_affine'
   # options.load_mode = 'normal'
@@ -905,10 +908,10 @@ if __name__ == '__main__':
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
   #                        home_dir + 'workspace/backdoor/normal_md.png',
   #                        home_dir + 'workspace/backdoor/uniform.png']
-  # show_mask_norms(mask_folder=model_folder, data_dir=options.data_dir,model_name=model_name, out_png=True)
+  show_mask_norms(mask_folder=model_folder, model_name=model_name, out_png=True)
   # generate_predictions(options, prefix=outfile_prefix)
   # test_blended_input(model_path,data_dir)
-  test_poison_performance(options, model_name)
+  # test_poison_performance(options, model_name)
   # test_performance(options, model_name=model_name)
   # test_mask_efficiency(options, global_label=3, model_name=model_name)
   # investigate_number_source_label(options, model_name)
