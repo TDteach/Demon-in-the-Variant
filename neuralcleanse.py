@@ -145,8 +145,7 @@ def get_data(options, dataset=None, model_name='gtsrb', phase='train'):
                          is_train,
                          distortions=params.distortions,
                          resize_method='bilinear')
-  if preprocessor.supports_datasets():
-    ds = preprocessor.create_dataset(batch_size=options.batch_size,
+  ds = preprocessor.create_dataset(batch_size=options.batch_size,
                                    num_splits=1,
                                    batch_size_per_split=options.batch_size,
                                    dataset=dataset,
@@ -154,10 +153,8 @@ def get_data(options, dataset=None, model_name='gtsrb', phase='train'):
                                    train=is_train,
                                    #datasets_repeat_cached_sample = params.datasets_repeat_cached_sample)
                                    datasets_repeat_cached_sample = False)
-    ds_iter = preprocessor.create_iterator(ds)
-    input_list = ds_iter.get_next()
-  else:
-    input_list = preprocessor.minibatch(dataset, options.data_subset, params)
+  ds_iter = preprocessor.create_iterator(ds)
+  input_list = ds_iter.get_next()
   return model, dataset, input_list
 
 
