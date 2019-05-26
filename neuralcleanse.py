@@ -388,7 +388,7 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
 
 def test_poison_performance(options, model_name):
   options.net_mode = 'normal'
-  options.data_mode = 'poison'
+  options.data_mode = 'poison_only'
   options.load_mode = 'bottom_affine'
   options.poison_fraction = 1
   subject_labels = options.poison_subject_labels
@@ -404,7 +404,7 @@ def test_poison_performance(options, model_name):
     options.gen_ori_label = True
   else:
     options.gen_ori_label = False
-  _performance_test(options, model_name)
+  return _performance_test(options, model_name)
 
 def test_mask_efficiency(options, global_label, model_name, selected_labels=None):
   options.net_mode = 'backdoor_def'
@@ -414,7 +414,7 @@ def test_mask_efficiency(options, global_label, model_name, selected_labels=None
   options.selected_training_labels = selected_labels
   options.data_subset = 'validation'
   options.gen_ori_label = False
-  _performance_test(options, model_name)
+  return _performance_test(options, model_name)
 
 def test_performance(options, model_name, selected_labels=None):
   options.net_mode = 'normal'
@@ -423,7 +423,7 @@ def test_performance(options, model_name, selected_labels=None):
   options.load_mode = 'bottom_affine'
   options.selected_training_labels = selected_labels
   options.gen_ori_label = False
-  _performance_test(options, model_name)
+  return _performance_test(options, model_name)
 
 
 
@@ -433,6 +433,7 @@ def _performance_test(options, model_name):
   options.shuffle = False
   options.build_level = 'logits'
   options.fix_level = 'all'
+  options.optimizer = 'sgd'
   options.num_epochs = 1
 
 
@@ -449,8 +450,10 @@ def _performance_test(options, model_name):
   if feed_list is not None:
     run_iters = min(10, run_iters)
 
+
   config = tf.ConfigProto()
   config.gpu_options.allow_growth = True
+
 
   init_op = tf.global_variables_initializer()
   local_var_init_op = tf.local_variables_initializer()
@@ -478,6 +481,7 @@ def _performance_test(options, model_name):
       t_e += options.batch_size
   print('===Results===')
   print(options.net_mode+' '+ options.data_mode+' top-1: %.2f%%' % (acc*100/t_e))
+  return acc*100/t_e
 
 
 def clean_mask_folder(mask_folder):
@@ -834,6 +838,7 @@ def train_model(options, model_name):
   options.base_lr = 0.05
   options.weight_decay = 0.00004
   options.fix_level = 'none'
+  options.data_subset = 'train'
 
 
   out_json_file = 'temp_config.json'
@@ -849,23 +854,56 @@ def train_model(options, model_name):
   print(sp_file)
   print(sp_list)
 
+
   os.system('rm -rf '+ckpt_folder)
   os.system(run_script+' --json_config='+out_json_file)
+
+  ret = dict()
+
 
   if options.data_mode == 'poison':
     options.poison_cover_labels=[[]]
     options.backbone_model_path = get_last_checkpoint_in_folder(options.checkpoint_folder)
-    test_poison_performance(options, model_name)
+    ret['tgt_mis'] = test_poison_performance(options, model_name)
     reset_all()
 
     options.poison_subject_labels=[None]
-    test_poison_performance(options, model_name)
+    ret['glb_mis'] = test_poison_performance(options, model_name)
     reset_all()
 
   options.backbone_model_path = get_last_checkpoint_in_folder(options.checkpoint_folder)
   options.data_mode = 'normal'
-  test_performance(options, model_name)
+  ret['acc'] = test_performance(options, model_name)
   reset_all()
+
+  return ret
+
+def tt(options, model_name):
+  with open('in.txt','r') as f:
+    a = f.readline()
+    b = a.strip().split(' ')
+    c = []
+    p = float(b[0])
+    if len(b) == 2 and b[1] == 'None':
+      c = None
+    else:
+      for i in b[1:]:
+        c.append(int(i))
+
+  if c is None:
+    n_cover = p
+  else:
+    n_cover = len(c)
+  options.cover_fraction=p
+  options.poison_cover_labels=[c]
+
+  tmp = train_model(options,model_name)
+  with open('out.txt','a') as f:
+    f.write('%f %f %f %f\n'%(n_cover,tmp['tgt_mis'],tmp['glb_mis'],tmp['acc']))
+
+  return 0
+
+
 
 
 if __name__ == '__main__':
@@ -881,15 +919,15 @@ if __name__ == '__main__':
 
   options = Options()
 
-  model_name='cifar10'
+  model_name='gtsrb'
   home_dir = os.environ['HOME']+'/'
   from tensorflow.python.client import device_lib
   local_device_protos = device_lib.list_local_devices()
   gpus = [x.name for x in local_device_protos if x.device_type == 'GPU']
   options.num_gpus = max(1,len(gpus))
   # model_folder = home_dir+'data/mask_test_gtsrb_benign/'
-  model_folder = home_dir+'data/no_cover/'
-  #model_folder = home_dir+'data/mask_imagenet_solid_rd/0_checkpoint/'
+  model_folder = home_dir+'data/checkpoint/'
+  # model_folder = home_dir+'data/mask_imagenet_solid_rd/0_checkpoint/'
   try:
     model_path = get_last_checkpoint_in_folder(model_folder)
   except:
@@ -897,31 +935,33 @@ if __name__ == '__main__':
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/_checkpoint/model.ckpt-3073'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
-  model_path = home_dir+'data/cifar_models/benign_all'
-  #model_path = home_dir+'data/gtsrb_models/f1t0c3c5_2x2'
-  # model_path = home_dir+'data/gtsrb_models/benign_all'
+  # model_path = home_dir+'data/cifar10_models/benign_all'
+  # model_path = home_dir+'data/gtsrb_models/f1t0nc'
+  model_path = home_dir+'data/gtsrb_models/benign_all'
   # model_path = home_dir+'data/imagenet_models/f1t0c11c12'
-  model_path = home_dir+'data/imagenet_models/benign_all'
+  # model_path = home_dir+'data/imagenet_models/benign_all'
   options.net_mode = 'normal'
-  options.load_mode = 'bottom_affine'
-  # options.load_mode = 'normal'
+  # options.load_mode = 'bottom_affine'
+  options.load_mode = 'normal'
   options.backbone_model_path = model_path
   options.num_epochs = 20
   options.data_mode = 'poison'
   #label_list = list(range(20))
+  options.poison_fraction = 0.5
+  options.cover_fraction = 0.5
   options.poison_subject_labels=[[1]]
   options.poison_object_label=[0]
-  # options.poison_cover_labels=[[1]]
-  #options.poison_subject_labels=[None]
-  options.poison_cover_labels=[[]]
-  outfile_prefix = 'out_2x2'
-  # options.poison_pattern_file = None
-  options.poison_pattern_file = [home_dir+'workspace/backdoor/solid_rd.png']
+  options.poison_cover_labels=[[12,13]]
+  # options.poison_subject_labels=[None]
+  # options.poison_cover_labels=[[]]
+  outfile_prefix = 'out_no_cover'
+  options.poison_pattern_file = None
+  # options.poison_pattern_file = [home_dir+'workspace/backdoor/solid_rd.png']
   # pattern_file=[(home_dir + 'workspace/backdoor/0_pattern.png', home_dir+'workspace/backdoor/0_mask.png')]
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
   #                        home_dir + 'workspace/backdoor/normal_md.png',
   #                        home_dir + 'workspace/backdoor/uniform.png']
-  show_mask_norms(mask_folder=model_folder, model_name=model_name, out_png=True)
+  # show_mask_norms(mask_folder=model_folder, model_name=model_name, out_png=True)
   # generate_predictions(options, prefix=outfile_prefix)
   # test_blended_input(model_path,data_dir)
   # test_poison_performance(options, model_name)
@@ -929,4 +969,5 @@ if __name__ == '__main__':
   # test_mask_efficiency(options, global_label=3, model_name=model_name)
   # investigate_number_source_label(options, model_name)
   # train_model(options,model_name)
+  tt(options,model_name)
   # obtain_masks_for_labels(options, [0], home_dir+'data/trytry_4', model_name)
