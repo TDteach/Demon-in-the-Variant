@@ -529,13 +529,17 @@ end
 %%
 
 fo = '/home/tangd/data/CIFAR-10/';
-load([fo,'cifar-10.mat']);
-gX = double(labels);
-gY= images';
-
-[coeff, XX] = pca(gX);
-
+in_mat_path = [fo,'cifar-10.mat'];
+out_mat_path = 'try.mat';
+gen_trans_im(in_mat_path, out_mat_path)
 %%
-[Su, Se, mean_a, mean_l] = global_model(XX(:,1:100), gY);
+for i = 1:10
+    im = new_im(i,:);
+    im = reshape(im,[32,32,3]);
+    im = permute(im,[2,1,3]);
+    imshow(im./255);
+    pause;
+end
+
 
 
