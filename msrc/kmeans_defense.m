@@ -11,7 +11,9 @@ XX = features;
 m = 2;
 
 for k=0:L
+%     idx = (labels==0)+(labels==3)+(labels==5);
     idx = labels==k;
+    idx = logical(idx);
     if (sum(idx) == 0)
         continue;
     end
@@ -27,40 +29,56 @@ for k=0:L
     m = min(size(X,2),m);
     X = X(:,1:m);
     
-% %     draw picture
-%     
-%     s = zeros(size(y));
-%     cc = zeros(size(y));
-%     c = cell(size(y));
-%     for i=1:numel(y)
-%         if y(i) == oy(i)
-%             s(i) = 50;
-%             c{i} = 'intact';
-%             cc(i) = 1;
-%         else 
-%             s(i) = 25;
-%             c{i} = 'infected';
-%             cc(i) = 2;
-%         end
-%     end
-% %     figure;
-%     if size(X,2) == 3
-%       scatter3(X(:,1), X(:,2), X(:,3),s,cc);
-%     else
-% %       scatter(X(:,1), X(:,2),s,cc);
-%       gscatter(X(:,1), X(:,2),c,'br','ox');
-%     end 
-% %     set(gcf,'Position',[100 100 260 200])
-%     
-%     
-%     idx = y == oy;
-%     ma = mean(X(idx,:));
-%     ca = cov(X);
-%     mb = mean(X(~idx,:));
-%     
-%     did = sqrt((ma-mb) * pinv(ca) * (ma-mb)');
-%     
-%     break;
+    %draw picture
+    
+%     iid = (oy~=1);
+%     X = X(iid,:);
+%     y = y(iid,:);
+%     oy = oy(iid,:);
+    
+    s = zeros(size(y));
+    cc = zeros(size(y));
+    c = cell(size(y));
+    for i=1:numel(y)
+        cc(i) = oy(i);
+        if y(i) == oy(i);
+            s(i) = 50;
+            c{i} = 'intact';
+        else 
+            s(i) = 25;
+            c{i} = 'infected';
+        end
+    end
+    figure;
+    if size(X,2) == 3
+      h = scatter3(X(:,1), X(:,2), X(:,3),s,cc);
+    else
+      h = gscatter(X(:,1), X(:,2),cc);
+    end 
+    for i=1:size(h,1)
+       if h(i).DisplayName == '0'
+           h(i).DisplayName = 'intact 0'
+           h(i).Color=[0,0,1];
+           h(i).Marker = 'o';
+       else
+           h(i).DisplayName = ['infected ',h(i).DisplayName]
+           h(i).Marker = '+';
+           h(i).Color(3)=0;
+           h(i).Color(2)= 0;%(i-1)/(size(h,1)-1)/2;
+           h(i).Color(1)=(i-1)/(size(h,1)-1)/2+0.5;
+       end
+    end
+    set(gcf,'Position',[100 100 260 200])
+    
+    
+    idx = y == oy;
+    ma = mean(X(idx,:));
+    ca = cov(X);
+    mb = mean(X(~idx,:));
+    
+    did = sqrt((ma-mb) * pinv(ca) * (ma-mb)');
+    
+    break;
 
     [clust, C] = kmeans(X,2);
     score = silhouette(X, clust);
@@ -97,11 +115,11 @@ for k=0:L
     
 end
 
-figure;
-plot(0:L, dis_sc');
-a = calc_anomaly_index(dis_sc/max(dis_sc));
-figure;
-plot(0:L, a);
+% figure;
+% plot(0:L, dis_sc');
+% a = calc_anomaly_index(dis_sc/max(dis_sc));
+% figure;
+% plot(0:L, a);
 
 
 end

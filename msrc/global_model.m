@@ -53,7 +53,7 @@ function [Su, Se, mean_a, u_m] = global_model(fM, lbs, Su, Se)
         last_Su = Su;
         last_Se = Se;
      
-        F = inv(Se);
+        F = pinv(Se);
         SuF = Su*F;
         
         G_set = cell(L,1);

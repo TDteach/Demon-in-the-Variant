@@ -6,7 +6,7 @@ M = 256;
 fo = '/home/tangd/workspace/backdoor/';
 features = readNPY([fo,'out_X.npy']);
 labels = readNPY([fo,'out_labels.npy']);
-ori_labels = readNPY([fo,'ori_labels.npy']);
+ori_labels = readNPY([fo,'out_ori_labels.npy']);
 %%
 % read image path
 img_path = cell(2,1);
@@ -92,7 +92,7 @@ save(['normal_0.',num2str(r),'_data.mat'],'inv_Sigma','mu');
 % save('normal_1.0_data.mat','inv_Sigma','mu');
 % save('good_rst_poisoned_normal_lu_#51_8993','good_Su','good_Se','good_u','good_e');
 %%
-fo = '/home/tangd/workspace/backdoor/';
+fo = '/home/tangd/workspace/backdoor/npys_gtsrb/';
 prefix = 'out_2x2';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
@@ -106,7 +106,7 @@ gidx = (labels==ori_labels);
 % gidx = (labels>=0);
 c = rand(size(gidx));
 gidx = gidx.*c;
-gidx = gidx>(1-0.8);
+gidx = gidx>(1-0.5);
 gX = features(gidx,:);
 gY = labels(gidx,:);
 % gidx = ~rst_idx{r,k};
@@ -116,7 +116,7 @@ gY = labels(gidx,:);
 [Su, Se, mean_a, mean_l] = global_model(gX, gY);
 %%
 %local model
-lidx = (labels<10);
+lidx = (labels < 100);
 % lidx = lidx.*(labels==ori_labels);
 lidx = logical(lidx);
 
@@ -134,7 +134,7 @@ plot(x, a);
 figure;
 n = size(u1,1);
 dis_u = zeros(n,1);
-F = inv(Se);
+F = pinv(Se);
 for i=1:n
     d = u1(i,:)-u2(i,:);
     dis_u(i,1) = d * F * d';
@@ -172,6 +172,7 @@ for z1=0:0.01:1
     vec*inv_W*vec'
     break;
 end
+
 %%
 
 
@@ -219,13 +220,13 @@ ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
 %%
 % for ac
 fo = '/home/tangd/workspace/backdoor/';
-prefix = 'out_2x2';
+prefix = 'out_cover';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
 ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
 [scores] = kmeans_defense(features, labels,ori_labels);
-figure;
-boxplot(scores(:,1), scores(:,2), 'PlotStyle','compact','symbol','.');
+% figure;
+% boxplot(scores(:,1), scores(:,2), 'PlotStyle','compact','symbol','.');
 %%
 % for ac
 ylim([-0.5,1]);
@@ -290,7 +291,7 @@ xlim([0,1]);
 set(gcf,'Position',[100 100 260 200])
 xlabel('Normalized entropy');
 ylabel('Occupation rate');
-legend({'Infected';'Intact'});
+legend({'Infected';'Uninfected'});
 %%
 n = size(features,1);
 x = zeros(1,9);
@@ -320,7 +321,7 @@ xlim([0,1]);
 set(gcf,'Position',[100 100 260 200])
 xlabel('Ratio');
 ylabel('Entropy');
-legend({'Infected';'Intact'});
+legend({'Infected';'Uninfected'});
 %%
 % for sentinet
 figure;
@@ -350,7 +351,7 @@ xlim([0,1]);
 set(gcf,'Position',[100 100 300 200])
 xlabel('AvgConf');
 ylabel('Fooled');
-legend({'Infected';'Intact'});
+legend({'Infected';'Uninfected'});
 
 %%
 % for neural clence
@@ -490,8 +491,8 @@ y2 = normpdf(z,13,5);
 plot(z,0.3*y1+0.7*y2,'.');
 
 %%
-sig = 2;
-x = sig*3;
+sig = 1;
+x = sig*4;
 z = normcdf(x,0,sig);
 1-(1-z)*2
 %%
@@ -527,19 +528,120 @@ title([ch,'x',ch,': ',num2str(did)]);
 legend(gca,'off');
 end
 %%
-
+% partition test
 fo = '/home/tangd/data/CIFAR-10/';
 in_mat_path = [fo,'cifar-10.mat'];
 out_mat_path = 'try.mat';
 gen_trans_im(in_mat_path, out_mat_path)
 %%
-for i = 1:10
-    im = new_im(i,:);
+load(out_mat_path);
+for i = 1:30
+    im = nX0(i,:);
     im = reshape(im,[32,32,3]);
     im = permute(im,[2,1,3]);
     imshow(im./255);
     pause;
 end
+%%
+%globally PCA
+fo = '/home/tangd/workspace/backdoor/npys_gtsrb/';
+prefix = 'out_2x2';
+features = readNPY([fo,prefix,'_X.npy']);
+labels = readNPY([fo,prefix,'_labels.npy']);
+ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
 
+m = 2;
+gidx = (labels==ori_labels);
+gX = features(gidx,:);
+[U, S, V] = svd(gX);
+X = V(:,1:m);
+iX = features(~gidx,:);
+nX = iX*X;
+plot(nX(:,1), nX(:,2),'rx');
+hold on;
+iX = features((gidx&(labels==0)),:);
+nX = iX*X;
+plot(nX(:,1), nX(:,2),'bo');
+%%
+% demo two partition
+n = 100;
+mu = [4,0]';
+sigma = [[0.1,0];[0,2]];
+r1 = mvnrnd(mu,sigma,n/2);
+r2 = mvnrnd(mu,sigma,n/2);
+
+figure;
+h1 = plot(r2(:,1), r2(:,2), 'rh','MarkerFaceColor','r', 'MarkerSize',7); hold on;
+h2 = plot(r1(:,1), r1(:,2), 'bo','MarkerFaceColor','b', 'MarkerSize',7); hold on;
+xlim([0,5]);
+ylim([-5,5]);
+set(gcf,'Position',[100 100 350 250]);
+
+u1 = [2,1]; u2=[2,-1];
+h3 = plot(u1(1),u1(2), 'b^','MarkerFaceColor','b', 'MarkerSize',9); hold on;
+h4 = plot(u2(1),u2(2), 'r^','MarkerFaceColor','r', 'MarkerSize',9); hold on;
+legend([h1,h2,h4,h3], {'infected','intact','\mu_1','\mu_2'});
+
+
+h = plot([0,u2(1)],[0,u2(2)],'r'); hold on;
+set(get(get(h,'Annotation'),'LegendInformation'),'IconDisplayStyle','off');
+h = plot([0,u1(1)],[0,u1(2)],'b'); hold on;
+set(get(get(h,'Annotation'),'LegendInformation'),'IconDisplayStyle','off');
+
+for i = 1:n/2
+    h = plot([u2(1), r2(i,1)],[u2(2),r2(i,2)],'r-.'); hold on;
+    set(get(get(h,'Annotation'),'LegendInformation'),'IconDisplayStyle','off');
+    h = plot([u1(1), r1(i,1)],[u1(2),r1(i,2)],'b-.'); hold on;
+    set(get(get(h,'Annotation'),'LegendInformation'),'IconDisplayStyle','off');
+end
+
+figure;
+h2 = plot(r2(:,1), r2(:,2), 'rh','MarkerFaceColor','r', 'MarkerSize',7); hold on;
+h1 = plot(r1(:,1), r1(:,2), 'bo','MarkerFaceColor','b', 'MarkerSize',7); hold on;
+xlim([0,5]);
+ylim([-5,5]);
+set(gcf,'Position',[100 100 350 250]);
+
+u1 = [2,0]; u2=[2,0];
+h3 = plot(u1(1),u1(2), 'k^','MarkerFaceColor','k', 'MarkerSize',9); hold on;
+legend([h2,h1,h3], {'intact','infected','\mu=\mu_1=\mu_2'});
+
+
+h = plot([0,u2(1)],[0,u2(2)],'r'); hold on;
+set(get(get(h,'Annotation'),'LegendInformation'),'IconDisplayStyle','off');
+h = plot([0,u1(1)],[0,u1(2)],'b'); hold on;
+set(get(get(h,'Annotation'),'LegendInformation'),'IconDisplayStyle','off');
+
+for i = 1:n/2
+    h = plot([u2(1), r2(i,1)],[u2(2),r2(i,2)],'r-.'); hold on;
+    set(get(get(h,'Annotation'),'LegendInformation'),'IconDisplayStyle','off');
+    h = plot([u1(1), r1(i,1)],[u1(2),r1(i,2)],'b-.'); hold on;
+    set(get(get(h,'Annotation'),'LegendInformation'),'IconDisplayStyle','off');
+end
+%%
+a = zeros(43,1);
+o='';
+for i =0:42
+    a(i+1) = sum(ori_labels==i);
+    o = [o,num2str(a(i+1)),','];
+end
+o
+%%
+fid = fopen('out.txt','r');
+d = fscanf(fid,'%f',[4,5*19]);
+m = 21;
+st = zeros(4,m);
+for i =1:m
+    idxu = d(1,:)<(i*0.001+0.0001);
+    idxd = d(1,:)>(i*0.001-0.0001);
+    idx = logical(idxu.*idxd);
+    if sum(idx) == 0
+        continue;
+    end
+    z = d(:,idx);
+    st(:,i) = mean(z,2);
+end
+figure;
+plot(1:m, st(3,1:end));
 
 

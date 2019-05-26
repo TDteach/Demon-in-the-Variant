@@ -39,7 +39,7 @@ end
 
 function [z1, u1, u2, sc] = find_split(X, Su, Se)
     [N,M] = size(X);
-    F = inv(Se);
+    F = pinv(Se);
     
     z1 = rand(N,1);
     last_z1 = -ones(N,1);
@@ -69,6 +69,18 @@ function [z1, u1, u2, sc] = find_split(X, Su, Se)
 %                 dd = Se*G2*vec';
 %                 u2 = u2-dd';
 %             end
+%         end
+
+
+%         for i =1:N
+%             e1 = X(i,:)-u1;
+%             e2 = X(i,:)-u2;
+%             if norm(e1)<norm(e2)
+%                 z1(i) = 1;
+%             else
+%                 z1(i) = 0;
+%             end
+%             
 %         end
 
         bias = u1*(F)*u1'-u2*(F)*u2';
@@ -141,6 +153,7 @@ function [z1, u1, u2, sc] = find_split(X, Su, Se)
         
 
     end
+ 
     
 %     %Hotelling's T-squared
 %     n_z1 = sum(z1>=0.5);
@@ -151,7 +164,7 @@ function [z1, u1, u2, sc] = find_split(X, Su, Se)
 %     t2 = sc*(N-M-1)/((N-2)*M);
 %     sc = t2/finv(0.95, M, N-M-1);
     
-    G = -inv(N*Su+Se);
+    G = -pinv(N*Su+Se);
     u_ori = zeros(1,M);
     for i=1:N
         vec = X(i,:);
@@ -164,6 +177,7 @@ function [z1, u1, u2, sc] = find_split(X, Su, Se)
     n1 = sum(z1>=0.5);
     n2 = N-n1;
     sc = n1*b1+n2*b2+N*log(n1/N)+N*log(n2/N);
+%     sc = n1*b1+n2*b2;
    
     for i=1:N
         e1 = X(i,:);
@@ -172,15 +186,18 @@ function [z1, u1, u2, sc] = find_split(X, Su, Se)
         else
             e2 = u_ori-u2;
         end
+%         sc = sc-2*e1*F*e2';
         
         e3 = 2*u_ori-u1-u2;
-        
         sc = sc-2*e1*F*e3';
     end
     
-    sc = sc/N;
     
-%     sc = 2*sc-log(N)*(M+M*M+2);
+%     sc = sc / sqrt(2*(M*M+M+1));
+    
+    %for KL-divergence test and Beyainsian Information Cretera
+    sc = sc/N; 
+%     sc = sc-log(N)*(M+M*M+1);
        
 end
 
