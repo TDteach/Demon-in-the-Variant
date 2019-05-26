@@ -19,13 +19,14 @@ import math
 import copy
 
 
-def gen_feed_data(sess, input_list, buf, options):
+def gen_feed_data(sess, input_list, buf, options, cur_iters):
   selet = options.selected_training_labels
   if len(input_list) == 3:
     im_op, lb_op, or_op = input_list
     if buf is None:
       buf = [[],[],[]]
     while len(buf[0]) < options.batch_size:
+      cur_iters += 1
       images, labels, ori_labels = sess.run([im_op, lb_op, or_op])
       for i, l, o in zip(images, labels, ori_labels):
         if selet is None or o in selet:
@@ -41,13 +42,16 @@ def gen_feed_data(sess, input_list, buf, options):
 
     if len(lb.shape) < 2:
       lb = np.expand_dims(lb,axis=1)
+    if len(ol.shape) < 2:
+      ol = np.expand_dims(ol,axis=1)
 
-    return (im, lb, ol), buf
+    return (im, lb, ol), buf, cur_iters
   elif len(input_list) == 2:
     im_op, lb_op = input_list
     if buf is None:
       buf = [[],[]]
     while len(buf[0]) < options.batch_size:
+      cur_iters += 1
       images, labels = sess.run([im_op, lb_op])
       for i, l in zip(images, labels):
         if selet is None or l in selet:
@@ -60,7 +64,7 @@ def gen_feed_data(sess, input_list, buf, options):
     if len(lb.shape) < 2:
       lb = np.expand_dims(lb,axis=1)
 
-    return (im, lb), buf
+    return (im, lb), buf, cur_iters
 
 
 def feed_input_by_dict(options, model_name):
@@ -388,7 +392,7 @@ def test_blended_input(model_path, data_dir, model_name='gtsrb'):
 
 def test_poison_performance(options, model_name):
   options.net_mode = 'normal'
-  options.data_mode = 'poison'
+  options.data_mode = 'poison_only'
   options.load_mode = 'bottom_affine'
   options.poison_fraction = 1
   subject_labels = options.poison_subject_labels
@@ -404,7 +408,7 @@ def test_poison_performance(options, model_name):
     options.gen_ori_label = True
   else:
     options.gen_ori_label = False
-  _performance_test(options, model_name)
+  return _performance_test(options, model_name)
 
 def test_mask_efficiency(options, global_label, model_name, selected_labels=None):
   options.net_mode = 'backdoor_def'
@@ -414,7 +418,7 @@ def test_mask_efficiency(options, global_label, model_name, selected_labels=None
   options.selected_training_labels = selected_labels
   options.data_subset = 'validation'
   options.gen_ori_label = False
-  _performance_test(options, model_name)
+  return _performance_test(options, model_name)
 
 def test_performance(options, model_name, selected_labels=None):
   options.net_mode = 'normal'
@@ -423,7 +427,7 @@ def test_performance(options, model_name, selected_labels=None):
   options.load_mode = 'bottom_affine'
   options.selected_training_labels = selected_labels
   options.gen_ori_label = False
-  _performance_test(options, model_name)
+  return _performance_test(options, model_name)
 
 
 
@@ -433,6 +437,7 @@ def _performance_test(options, model_name):
   options.shuffle = False
   options.build_level = 'logits'
   options.fix_level = 'all'
+  options.optimizer = 'sgd'
   options.num_epochs = 1
 
 
@@ -445,12 +450,15 @@ def _performance_test(options, model_name):
   buf = None
   acc = 0
   t_e = 0
+  cur_iters = 0
   run_iters = math.ceil(dataset.num_examples_per_epoch(options.data_subset)/options.batch_size)
   if feed_list is not None:
     run_iters = min(10, run_iters)
 
+
   config = tf.ConfigProto()
   config.gpu_options.allow_growth = True
+
 
   init_op = tf.global_variables_initializer()
   local_var_init_op = tf.local_variables_initializer()
@@ -460,16 +468,17 @@ def _performance_test(options, model_name):
     sess.run(local_var_init_op)
     sess.run(table_init_ops)
     model.load_backbone_model(sess, options.backbone_model_path)
-    for i in range(run_iters):
+    while cur_iters < run_iters:
       if run_iters <= 10:
-        print(i)
-      elif (i%10 == 0):
-        print(i)
+        print(cur_iters)
+      elif (cur_iters%10 == 0):
+        print(cur_iters)
       if feed_list is not None:
-        feed_data, buf = gen_feed_data(sess, input_list, buf, options)
+        feed_data, buf, cur_iters = gen_feed_data(sess, input_list, buf, options, cur_iters)
         logits = sess.run(out_op, feed_dict={feed_list[0]:feed_data[0], feed_list[1]:feed_data[1]})
         labels = feed_data[1]
       else:
+        cur_iters += 1
         labels, logits = sess.run([lb_op, out_op])
       pds = np.argmax(logits, axis=1)
       if len(labels.shape) > 1:
@@ -478,6 +487,7 @@ def _performance_test(options, model_name):
       t_e += options.batch_size
   print('===Results===')
   print(options.net_mode+' '+ options.data_mode+' top-1: %.2f%%' % (acc*100/t_e))
+  return acc*100/t_e
 
 
 def clean_mask_folder(mask_folder):
@@ -661,9 +671,9 @@ def obtain_masks_for_labels(options, labels, out_folder, model_name):
   options = justify_options_for_model(options, model_name)
   options.gen_ori_label = False
 
-  options.num_epochs = 10
+  options.num_epochs = 100
   options.net_mode = 'backdoor_def'
-  options.loss_lambda =0.01
+  options.loss_lambda =0
   options.build_level = 'logits'
   options.load_mode = 'bottom_affine'
   options.data_mode = 'global_label'
@@ -709,20 +719,28 @@ def generate_predictions(options, build_level='embeddings', model_name='gtsrb', 
   options.poison_fraction = 1
   options.load_mode = 'all'
   options.fix_level = 'all'
-  options.selected_training_labels = None
+  options.selected_training_labels = list(range(10))
   options.build_level = build_level
+  
+  options.data_subset = 'validation'
+  if model_name=='resnet50' and options.data_mode=='poison':
+    options.gen_ori_label = True
 
   model, dataset, input_list, feed_list, out_op, aux_out_op = get_output(options, model_name=model_name)
   model.add_backbone_saver()
 
   emb_matrix = None
   lb_matrix = None
+  ori_matrix = None
   t_e = 0
   im_op = input_list[0]
   lb_op = input_list[1]
+  if len(input_list) > 2:
+    or_op = input_list[2]
   buf = None
 
   n = dataset.num_examples_per_epoch()
+  cur_iters = 0
   num_iters = math.ceil(n / options.batch_size)
 
   config = tf.ConfigProto()
@@ -736,14 +754,29 @@ def generate_predictions(options, build_level='embeddings', model_name='gtsrb', 
     sess.run(local_var_init_op)
     sess.run(table_init_ops)
     model.load_backbone_model(sess, model_path)
-    for i in range(num_iters):
-      labels, embeddings = sess.run([lb_op, out_op])
+    while cur_iters < num_iters:
+      if feed_list is not None:
+        feed_data , buf, cur_iters = gen_feed_data(sess, input_list, buf, options, cur_iters)
+        embeddings = sess.run(out_op, feed_dict={feed_list[0]:feed_data[0], feed_list[1]:feed_data[1]})
+        labels = feed_data[1]
+        if options.gen_ori_label:
+          ori_labels = feed_data[2]
+      else:
+        cur_iters += 1
+        if len(input_list) > 2:
+          labels, embeddings, ori_labels = sess.run([lb_op, out_op,or_op])
+        else:
+          labels, embeddings = sess.run([lb_op, out_op])
       if emb_matrix is None:
         emb_matrix = embeddings
         lb_matrix = labels
+        if options.gen_ori_label:
+          ori_matrix = ori_labels
       else:
         emb_matrix = np.concatenate((emb_matrix, embeddings))
         lb_matrix = np.concatenate((lb_matrix, labels))
+        if ori_matrix is not None:
+          ori_matrix = np.concatenate((ori_matrix, ori_labels))
 
   print('===Results===')
   out_name = prefix+'_X.npy'
@@ -754,7 +787,10 @@ def generate_predictions(options, build_level='embeddings', model_name='gtsrb', 
   print('write labels to '+out_name)
   out_name = prefix+'_ori_labels.npy'
   if options.data_mode == 'poison':
-    labels = dataset.ori_labels
+    if ori_matrix is None:
+      labels = dataset.ori_labels
+    else:
+      labels = ori_matrix[:n]
   else:
     labels = lb_matrix[:n]
   np.save(out_name, labels)
@@ -834,6 +870,7 @@ def train_model(options, model_name):
   options.base_lr = 0.05
   options.weight_decay = 0.00004
   options.fix_level = 'none'
+  options.data_subset = 'train'
 
 
   out_json_file = 'temp_config.json'
@@ -849,23 +886,56 @@ def train_model(options, model_name):
   print(sp_file)
   print(sp_list)
 
+
   os.system('rm -rf '+ckpt_folder)
   os.system(run_script+' --json_config='+out_json_file)
+
+  ret = dict()
+
 
   if options.data_mode == 'poison':
     options.poison_cover_labels=[[]]
     options.backbone_model_path = get_last_checkpoint_in_folder(options.checkpoint_folder)
-    test_poison_performance(options, model_name)
+    ret['tgt_mis'] = test_poison_performance(options, model_name)
     reset_all()
 
     options.poison_subject_labels=[None]
-    test_poison_performance(options, model_name)
+    ret['glb_mis'] = test_poison_performance(options, model_name)
     reset_all()
 
   options.backbone_model_path = get_last_checkpoint_in_folder(options.checkpoint_folder)
   options.data_mode = 'normal'
-  test_performance(options, model_name)
+  ret['acc'] = test_performance(options, model_name)
   reset_all()
+
+  return ret
+
+def tt(options, model_name):
+  with open('in.txt','r') as f:
+    a = f.readline()
+    b = a.strip().split(' ')
+    c = []
+    p = float(b[0])
+    if len(b) == 2 and b[1] == 'None':
+      c = None
+    else:
+      for i in b[1:]:
+        c.append(int(i))
+
+  if c is None:
+    n_cover = p
+  else:
+    n_cover = len(c)
+  options.cover_fraction=p
+  options.poison_cover_labels=[c]
+
+  tmp = train_model(options,model_name)
+  with open('out.txt','a') as f:
+    f.write('%f %f %f %f\n'%(n_cover,tmp['tgt_mis'],tmp['glb_mis'],tmp['acc']))
+
+  return 0
+
+
 
 
 if __name__ == '__main__':
@@ -881,15 +951,15 @@ if __name__ == '__main__':
 
   options = Options()
 
-  model_name='cifar10'
+  model_name='resnet50'
   home_dir = os.environ['HOME']+'/'
   from tensorflow.python.client import device_lib
   local_device_protos = device_lib.list_local_devices()
   gpus = [x.name for x in local_device_protos if x.device_type == 'GPU']
   options.num_gpus = max(1,len(gpus))
   # model_folder = home_dir+'data/mask_test_gtsrb_benign/'
-  model_folder = home_dir+'data/no_cover/'
-  #model_folder = home_dir+'data/mask_imagenet_solid_rd/0_checkpoint/'
+  model_folder = home_dir+'data/checkpoint/'
+  # model_folder = home_dir+'data/mask_imagenet_solid_rd/0_checkpoint/'
   try:
     model_path = get_last_checkpoint_in_folder(model_folder)
   except:
@@ -897,36 +967,38 @@ if __name__ == '__main__':
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/_checkpoint/model.ckpt-3073'
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
-  model_path = home_dir+'data/cifar_models/benign_all'
+  # model_path = home_dir+'data/cifar10_models/benign_all'
   #model_path = home_dir+'data/gtsrb_models/f1t0c3c5_2x2'
   # model_path = home_dir+'data/gtsrb_models/benign_all'
-  # model_path = home_dir+'data/imagenet_models/f1t0c11c12'
-  model_path = home_dir+'data/imagenet_models/benign_all'
+  model_path = home_dir+'data/imagenet_models/f2t1c11c12'
+  # model_path = home_dir+'data/imagenet_models/benign_all'
   options.net_mode = 'normal'
-  options.load_mode = 'bottom_affine'
-  # options.load_mode = 'normal'
+  # options.load_mode = 'bottom_affine'
+  options.load_mode = 'normal'
   options.backbone_model_path = model_path
-  options.num_epochs = 20
+  options.num_epochs = 120
   options.data_mode = 'poison'
   #label_list = list(range(20))
-  options.poison_subject_labels=[[1]]
-  options.poison_object_label=[0]
+  options.poison_fraction = 0.5
+  options.poison_subject_labels=[[2]]
+  options.poison_object_label=[1]
   # options.poison_cover_labels=[[1]]
   #options.poison_subject_labels=[None]
   options.poison_cover_labels=[[]]
-  outfile_prefix = 'out_2x2'
+  outfile_prefix = 'out'
   # options.poison_pattern_file = None
   options.poison_pattern_file = [home_dir+'workspace/backdoor/solid_rd.png']
   # pattern_file=[(home_dir + 'workspace/backdoor/0_pattern.png', home_dir+'workspace/backdoor/0_mask.png')]
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
   #                        home_dir + 'workspace/backdoor/normal_md.png',
   #                        home_dir + 'workspace/backdoor/uniform.png']
-  show_mask_norms(mask_folder=model_folder, model_name=model_name, out_png=True)
-  # generate_predictions(options, prefix=outfile_prefix)
+  # show_mask_norms(mask_folder=model_folder, model_name=model_name, out_png=True)
+  generate_predictions(options, prefix=outfile_prefix, model_name=model_name)
   # test_blended_input(model_path,data_dir)
   # test_poison_performance(options, model_name)
   # test_performance(options, model_name=model_name)
   # test_mask_efficiency(options, global_label=3, model_name=model_name)
   # investigate_number_source_label(options, model_name)
   # train_model(options,model_name)
+  tt(options,model_name)
   # obtain_masks_for_labels(options, [0], home_dir+'data/trytry_4', model_name)
