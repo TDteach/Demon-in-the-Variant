@@ -391,7 +391,10 @@ def test_blended_input(options, model_name='gtsrb'):
 
 def test_poison_performance(options, model_name):
   options.net_mode = 'normal'
-  options.data_mode = 'poison_only'
+  if 'colorful' in options.data_mode:
+    options.data_mode = 'poison_only_colorful'
+  else:
+    options.data_mode = 'poison_only'
   options.load_mode = 'bottom_affine'
   options.poison_fraction = 1
   subject_labels = options.poison_subject_labels
@@ -431,8 +434,8 @@ def test_performance(options, model_name, selected_labels=None):
 
 
 def _performance_test(options, model_name):
-  options.data_subset = 'validation'
-  # options.data_subset = 'train'
+  #options.data_subset = 'validation'
+  options.data_subset = 'train'
   options = justify_options_for_model(options,model_name)
   options.shuffle = False
   options.build_level = 'logits'
@@ -970,25 +973,25 @@ if __name__ == '__main__':
   # model_path = home_dir+'data/cifar10_models/benign_all'
   # subname = 'strip'
   # model_path = home_dir+'data/gtsrb_models/f1t0c11c12_'+subname
-  # model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
+  model_path = home_dir+'data/gtsrb_models/colorful_5obj'
   # model_path = home_dir+'data/imagenet_models/f2t1c11c12'
   # model_path = home_dir+'data/imagenet_models/benign_all'
   options.net_mode = 'normal'
-  # options.load_mode = 'bottom_affine'
-  options.load_mode = 'normal'
+  options.load_mode = 'bottom_affine'
+  # options.load_mode = 'normal'
   options.backbone_model_path = model_path
-  options.num_epochs = 60
+  options.num_epochs = 30
   options.data_mode = 'poison_colorful'
   #label_list = list(range(20))
   options.poison_fraction = 1
   options.cover_fraction = 1
   options.poison_subject_labels=[[1],[3],[5],[7],[9]]
   options.poison_object_label=[0,2,4,6,8]
-  options.poison_cover_labels=[[11,12],[13,14],[15,16],[17,18],[19,20]]
-  # options.poison_cover_labels=[[]]*5
+  # options.poison_cover_labels=[[11,12],[13,14],[15,16],[17,18],[19,20]]
+  options.poison_cover_labels=[[]]*5
   # options.poison_subject_labels=[[9]]
   # options.poison_object_label=[8]
-  # options.poison_cover_labels=[None]
+  # options.poison_cover_labels=[[]]
   outfile_prefix = 'coloful_5'
   options.poison_pattern_file = None
   # options.poison_pattern_file = [home_dir+'workspace/backdoor/'+subname+'.png']
