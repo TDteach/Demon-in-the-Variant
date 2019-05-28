@@ -57,14 +57,16 @@ for k=0:L
     end 
     for i=1:size(h,1)
        if h(i).DisplayName == '0'
-           h(i).DisplayName = 'intact 0'
+           h(i).DisplayName = 'Normal';
            h(i).Color=[0,0,1];
            h(i).Marker = 'o';
        else
-           h(i).DisplayName = ['infected ',h(i).DisplayName]
+%            h(i).DisplayName = ['Infected ',h(i).DisplayName];
+           h(i).DisplayName = 'Infected';
            h(i).Marker = '+';
            h(i).Color(3)=0;
-           h(i).Color(2)= 0;%(i-1)/(size(h,1)-1)/2;
+           h(i).Color(2)= 0;
+%            h(i).Color(2)= (i-1)/(size(h,1)-1)/2;
            h(i).Color(1)=(i-1)/(size(h,1)-1)/2+0.5;
        end
     end

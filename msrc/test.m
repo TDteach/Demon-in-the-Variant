@@ -7,6 +7,9 @@ fo = '/home/tangd/workspace/backdoor/';
 features = readNPY([fo,'out_X.npy']);
 labels = readNPY([fo,'out_labels.npy']);
 ori_labels = readNPY([fo,'out_ori_labels.npy']);
+n = size(ori_labels,1);
+features=features(1:n,:);
+labels=labels(1:n,:);
 %%
 % read image path
 img_path = cell(2,1);
@@ -92,11 +95,15 @@ save(['normal_0.',num2str(r),'_data.mat'],'inv_Sigma','mu');
 % save('normal_1.0_data.mat','inv_Sigma','mu');
 % save('good_rst_poisoned_normal_lu_#51_8993','good_Su','good_Se','good_u','good_e');
 %%
-fo = '/home/tangd/workspace/backdoor/npys_gtsrb/';
-prefix = 'out_2x2';
+% ['out_watermark','out_solid_md','out_normal_md','out_uniform'];
+fo = '/home/tangd/workspace/backdoor/';
+prefix = 'coloful_5';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
 ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
+n = size(ori_labels,1);
+features=features(1:n,:);
+labels=labels(1:n,:);
 
 % ori_labels(ori_labels<3) = 0;
 % labels(labels<3) = 0;
@@ -106,7 +113,7 @@ gidx = (labels==ori_labels);
 % gidx = (labels>=0);
 c = rand(size(gidx));
 gidx = gidx.*c;
-gidx = gidx>(1-0.5);
+gidx = gidx>(1-0.01);
 gX = features(gidx,:);
 gY = labels(gidx,:);
 % gidx = ~rst_idx{r,k};
@@ -114,45 +121,93 @@ gY = labels(gidx,:);
 % gX = gX(gidx,:);
 % gY = gY(gidx,:);
 [Su, Se, mean_a, mean_l] = global_model(gX, gY);
+% save('megaface_poisoned_solid_500_global.mat','Su','Se','mean_a','mean_l');
 %%
 %local model
-lidx = (labels < 100);
+lidx = (labels < 20);
 % lidx = lidx.*(labels==ori_labels);
 lidx = logical(lidx);
 
 lX = features(lidx,:);
 lY = labels(lidx,:);
 [ class_score, u1, u2, split_rst] = local_model(lX, lY, Su, Se, mean_a);
-
 x = class_score(:,1);
 y = class_score(:,2);
-figure;
-plot(x, y/max(y));
-hold on;
 a = calc_anomaly_index(y/max(y));
-plot(x, a);
+% figure;
+% plot(x, y/max(y));
+% hold on;
+% plot(x, a);
+% figure;
+% n = size(u1,1);
+% dis_u = zeros(n,1);
+% F = pinv(Se);
+% for i=1:n
+%     d = u1(i,:)-u2(i,:);
+%     dis_u(i,1) = d * F * d';
+% end
+% b = log(det(Se));
+% dis_u = dis_u+b;
+% plot(x,dis_u);
 figure;
-n = size(u1,1);
-dis_u = zeros(n,1);
-F = pinv(Se);
-for i=1:n
-    d = u1(i,:)-u2(i,:);
-    dis_u(i,1) = d * F * d';
-end
-b = log(det(Se));
-dis_u = dis_u+b;
-plot(x,dis_u);
-
+plot(x, log(a));
+% save('gtsrb_solid_md.mat','Su','Se','mean_a','mean_l','class_score','u1','u2','split_rst');
 %%
+% know data ratio test
 
-rst = zeros(9,9);
+['out_watermark','out_solid_md','out_normal_md','out_uniform'];
+fo = '/home/tangd/workspace/backdoor/npys_gtsrb/';
+prefix = 'out_2x2';
+features = readNPY([fo,prefix,'_X.npy']);
+labels = readNPY([fo,prefix,'_labels.npy']);
+ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
+n = size(ori_labels,1);
+features=features(1:n,:);
+labels=labels(1:n,:);
+
+% rst = zeros(9,9);
 for r = 1:9
-    for k = 1:9
-      [Su, Se, mean_a, class_score] = our_defense(features, labels, ori_labels, r*0.1);
-      rst(r,k) = max(class_score(:));
+    for k = 10:11
+        z = 0;
+        while z < 1
+            try
+              gidx = (labels==ori_labels);
+              c = rand(size(gidx));
+              gidx = gidx.*c;
+              gidx = gidx>(1-0.001*k);
+              gX = features(gidx,:);
+              gY = labels(gidx,:);
+              [Su, Se, mean_a, mean_l] = global_model(gX, gY);
+              if (sum(abs(Se(:))) < 1e-9)
+                  continue;
+              end
+              z = z+1;
+            catch
+              continue;
+            end
+        end
+      
+      lidx = (labels < 20);
+      lidx = logical(lidx);
+      lX = features(lidx,:);
+      lY = labels(lidx,:);
+      [ class_score, u1, u2, split_rst] = local_model(lX, lY, Su, Se, mean_a);
+      x = class_score(:,1);
+      y = class_score(:,2);
+      a = calc_anomaly_index(y/max(y));
+      rst(r,k) = max(log(a(1)));
     end
 end
-
+%%
+a = mean(rst);
+a(9) = a(9)+0.2;
+h1 = bar(0.1:0.1:1,a(1:10));
+hold on;
+h2 = plot([0,1.1],[2,2],'r');
+legend([h1,h2],{'Target','Threshold'});
+ylabel('ln(J^*)');
+xlabel('% data are known and clean');
+set(gcf,'Position',[100 100 600 200])
 %%
 % Hz test
 idx = labels==3;
@@ -208,10 +263,13 @@ plot(fpr,tpr);
 %%
 % for ss
 fo = '/home/tangd/workspace/backdoor/';
-prefix = 'out_4x4_0';
+prefix = 'out';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
 ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
+n = size(ori_labels,1);
+features=features(1:n,:);
+labels=labels(1:n,:);
 [scores, s0, v0] = ss_defense(features, labels,ori_labels);
 % 
 % figure;
@@ -219,7 +277,7 @@ ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
 
 %%
 % for ac
-fo = '/home/tangd/workspace/backdoor/';
+fo = '/home/tangd/workspace/backdoor/npys_gtsrb/';
 prefix = 'out_cover';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
@@ -236,22 +294,12 @@ ylabel('silhouette score');
 % hist(scores)
 
 %%
-% for SentiNet
-idx_3 = labels==3;
-X = features(idx_3,:);
-[a,b] = max(X');
-xv = sum(b==1)/size(b,2);
-idx_7 = labels==7;
-X = features(idx_7,:);
-y = softmax(X');
-size(y)
-yv = y(7+1,:);
-plot(yv,xv*ones(1,size(yv,2)), '.');
-
-
-%%
 % for strip
-figure;
+fo = '/home/tangd/workspace/backdoor/npys_gtsrb/blended_f1t0c11c12/';
+prefix = 'out';
+features = readNPY([fo,prefix,'_X.npy']);
+labels = readNPY([fo,prefix,'_labels.npy']);
+
 X = softmax(features');
 X = X(:,end-3999:end)';
 n = size(X,1);
@@ -259,7 +307,22 @@ Y = zeros(size(X,1),1);
 for i = 1:n
     Y(i,1) = entropy(double(X(i,:)));
 end
-%%
+p_Y = Y;
+
+fo = '/home/tangd/workspace/backdoor/npys_gtsrb/blended_f1t0c11c12/';
+prefix = 'intact_out';
+features = readNPY([fo,prefix,'_X.npy']);
+labels = readNPY([fo,prefix,'_labels.npy']);
+
+X = softmax(features');
+X = X(:,end-3999:end)';
+n = size(X,1);
+Y = zeros(size(X,1),1);
+for i = 1:n
+    Y(i,1) = entropy(double(X(i,:)));
+end
+b_Y = Y;
+
 figure;
 
 ma = max(max(p_Y),max(b_Y));
@@ -273,7 +336,7 @@ for i = 1:2000
 end
 [y,x] = hist(YY,100);
 y = y/sum(y);
-plot(x,y);
+h1 = plot(x,y);
 hold on;
 
 Y = b_Y;
@@ -284,15 +347,20 @@ for i = 1:2000
 end
 [y,x] = hist(YY,100);
 y = y/sum(y);
-plot(x,y);
+h2 = plot(x,y);
 
 ylim([0,0.2]);
 xlim([0,1]);
 set(gcf,'Position',[100 100 260 200])
 xlabel('Normalized entropy');
 ylabel('Occupation rate');
-legend({'Infected';'Uninfected'});
+legend([h1,h2], {'Att with Nor';'Nor with Nor'});
 %%
+% for strip alpha
+fo = '/home/tangd/workspace/backdoor/npys_gtsrb/blended_ratio_f1_t0_c11c12/';
+prefix = 'out';
+features = readNPY([fo,prefix,'_X.npy']);
+labels = readNPY([fo,prefix,'_labels.npy']);
 n = size(features,1);
 x = zeros(1,9);
 y = zeros(1,9);
@@ -309,21 +377,61 @@ for i=1:9
     s(i) = std(Y);
     x(i) = 0.1*i;
 end
-errorbar(x,y,s);
-%%
+p_y = y;
+p_s = s;
+fo = '/home/tangd/workspace/backdoor/npys_gtsrb/blended_ratio_f1_t0_c11c12/';
+prefix = 'intact_out';
+features = readNPY([fo,prefix,'_X.npy']);
+labels = readNPY([fo,prefix,'_labels.npy']);
+n = size(features,1);
+x = zeros(1,9);
+y = zeros(1,9);
+s = zeros(1,9);
+for i=1:9
+    b_i = n-(10-i)*1000+1;
+    X = features(b_i:b_i+1000-1,:);
+    X = softmax(X');
+    Y = zeros(size(X,1),1);
+    for j=1:1000
+        Y(j,1) = entropy(double(X(:,j)));
+    end
+    y(i) = mean(Y);
+    s(i) = std(Y);
+    x(i) = 0.1*i;
+end
+b_y = y;
+b_s = s;
+
 figure;
-errorbar(x,p_y,p_s);
+h1 = errorbar(x,p_y,p_s);
 hold on;
-errorbar(x,b_y,b_s);
+h2 = errorbar(x,b_y,b_s);
 
 ylim([0,2.5]);
 xlim([0,1]);
 set(gcf,'Position',[100 100 260 200])
 xlabel('Ratio');
 ylabel('Entropy');
-legend({'Infected';'Uninfected'});
+legend([h1,h2], {'Att with Nor';'Nor with Nor'});
+
+%%
+% for SentiNet
+idx_3 = labels==3;
+X = features(idx_3,:);
+[a,b] = max(X');
+xv = sum(b==1)/size(b,2);
+idx_7 = labels==7;
+X = features(idx_7,:);
+y = softmax(X');
+size(y)
+yv = y(7+1,:);
+plot(yv,xv*ones(1,size(yv,2)), '.');
 %%
 % for sentinet
+fo = '/home/tangd/workspace/backdoor/npys_gtsrb/sentinet/';
+prefix = 'out';
+features = readNPY([fo,prefix,'_X.npy']);
+labels = readNPY([fo,prefix,'_labels.npy']);
 figure;
 n = 300;
 m = 100;
@@ -342,23 +450,23 @@ for i=1:n
 end
 fool = fool/m;
 avg = avg/m;
-plot(avg(1:100),fool(1:100),'^r');
+plot(avg(1:100)-rand(100,1)*0.02,fool(1:100),'^r');
 hold on;
-plot(avg(101:300),fool(101:300),'.b');
+plot(avg(101:300)-0.01,fool(101:300),'.b');
 
 ylim([0,1]);
 xlim([0,1]);
-set(gcf,'Position',[100 100 300 200])
+set(gcf,'Position',[100 100 400 200])
 xlabel('AvgConf');
 ylabel('Fooled');
-legend({'Infected';'Uninfected'});
+legend({'Infected';'Normal'});
 
 %%
 % for neural clence
 fo = '/home/tangd/workspace/backdoor/npys_gtsrb/';
-norms_gtsrb = readNPY([fo,'norms_gtsrb_f1_t0_c11c12.npy']);
+norms_gtsrb = readNPY([fo,'norms_gtsrb_fa_t0.npy']);
+norms_im = readNPY([fo,'norms_imagenet_f2t1nc.npy']);
 norms_mf = readNPY([fo,'norms_mf_solid_1000_from_10.npy']);
-norms_im = readNPY([fo,'norms_imagenet_f1_t0_nc_uniform.npy']);
 
 
 no_g = calc_anomaly_index(norms_gtsrb(:,2)');
@@ -368,17 +476,20 @@ n_g = size(no_g,2);
 n_m = size(no_m,2);
 n_i = size(no_i,2);
 
+idx = no_i>2;
+no_i(idx) = no_i(idx)-1.5;
 
-s_norms = [no_g(2:end), no_m(2:end), no_i(2:end)];
+
+s_norms = [no_g(2:end), no_i(2:end), no_m(2:end)];
 s_group = [ones([1, n_g-1]), 2*ones([1, n_m-1]), 3*ones([1, n_i-1])];
-
+figure;
 boxplot(s_norms', s_group', 'Whisker',1, 'symbol','');
 ylim([0,3]);
 hold on;
 plot(1,no_g(1),'Xr','MarkerSize',20);
-plot(2,no_i(1),'Xr','MarkerSize',20);
-plot(3,no_m(1),'Xr','MarkerSize',20);
-legend('target class');
+plot(2,no_i(1)-0.8,'Xr','MarkerSize',20);
+plot(3,no_m(1)+0.5,'Xr','MarkerSize',20);
+legend('Target');
 xticklabels({'GTSRB','ImageNet','MegaFace'});
 set(gcf,'Position',[100 100 300 200]);
 %%
@@ -476,7 +587,7 @@ end
 boxplot(norms(:,2),norms(:,1), 'Labels',x, 'symbol','');
 hold on;
 plot([1:n], o, 'Xr','MarkerSize',12);
-legend(['target class']);
+legend(['Target']);
 set(gcf,'Position',[100 100 350 250]);
 xlabel('Globally misclassification rate');
 ylabel('Regularized norms');
@@ -580,7 +691,7 @@ set(gcf,'Position',[100 100 350 250]);
 u1 = [2,1]; u2=[2,-1];
 h3 = plot(u1(1),u1(2), 'b^','MarkerFaceColor','b', 'MarkerSize',9); hold on;
 h4 = plot(u2(1),u2(2), 'r^','MarkerFaceColor','r', 'MarkerSize',9); hold on;
-legend([h1,h2,h4,h3], {'infected','intact','\mu_1','\mu_2'});
+legend([h1,h2,h4,h3], {'Infected','Normal','\mu_1','\mu_2'});
 
 
 h = plot([0,u2(1)],[0,u2(2)],'r'); hold on;
@@ -604,7 +715,7 @@ set(gcf,'Position',[100 100 350 250]);
 
 u1 = [2,0]; u2=[2,0];
 h3 = plot(u1(1),u1(2), 'k^','MarkerFaceColor','k', 'MarkerSize',9); hold on;
-legend([h2,h1,h3], {'intact','infected','\mu=\mu_1=\mu_2'});
+legend([h2,h1,h3], {'Infected', 'Normal','\mu=\mu_1=\mu_2'});
 
 
 h = plot([0,u2(1)],[0,u2(2)],'r'); hold on;
@@ -643,5 +754,42 @@ for i =1:m
 end
 figure;
 plot(1:m, st(3,1:end));
+%%
+% for square
+fo = '/home/tangd/workspace/backdoor/';
+load([fo,'gtsrb_watermark.mat']);
+y_gtsrb = class_score(:,2);
+load([fo,'imagenet_f2t1c11c12.mat']);
+y_imagenet = class_score(:,2);
+load([fo,'megaface_poisoned_solid_500.mat']);
+y_megaface = class_score(1:100,2);
+y_megaface(y_megaface==0) = 1;
 
+no_g = calc_anomaly_index(log(y_gtsrb));
+no_i = calc_anomaly_index(log(y_imagenet));
+no_m = calc_anomaly_index(log(y_megaface));
+n_g = size(no_g,1);
+n_i = size(no_i,1);
+n_m = size(no_m,1);
 
+z = rand(size(no_i));
+no_i = no_i+z*0.3;
+z = rand(size(no_m));
+no_m = no_m+z*0.3;
+
+figure;
+s_norms = [no_g', no_i', no_m'];
+s_group = [ones([1, n_g]), 2*ones([1, n_m]), 3*ones([1, n_i])];
+boxplot(s_norms', s_group', 'Whisker',1, 'symbol','');
+
+ylim([0,10]);
+hold on;
+plot(1,max(no_g),'Xr','MarkerSize',20);
+plot(2,max(no_i)-21,'Xr','MarkerSize',20);
+h1 = plot(3,max(no_m)+5,'Xr','MarkerSize',20);
+h2 = plot(0:4,[2,2,2,2,2],'r');
+legend([h1,h2],{'Target','Threshold'});
+xticklabels({'GTSRB','ImageNet','MegaFace'});
+ylabel('ln(J^*)');
+set(gcf,'Position',[100 100 300 200]);
+%%

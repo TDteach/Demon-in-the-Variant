@@ -49,7 +49,9 @@ function [Su, Se, mean_a, u_m] = global_model(fM, lbs, Su, Se)
     dist_Su = 1e5;
     dist_Se = 1e5;
     
-    while dist_Su+dist_Se > 0.1
+    n_iters = 0;
+    while (dist_Su+dist_Se > 0.1) && (n_iters < 100)
+        n_iters = n_iters+1;
         last_Su = Su;
         last_Se = Se;
      
@@ -91,6 +93,11 @@ function [Su, Se, mean_a, u_m] = global_model(fM, lbs, Su, Se)
         dist_Su = norm(dif_Su(:))
         dist_Se = norm(dif_Se(:))
 
+    end
+    
+    if n_iters >= 100
+        Su = 0;
+        Se = 0;
     end
     
 %     ret_u = zeros(N,M);

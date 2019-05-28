@@ -12,7 +12,7 @@ dis_sc = zeros(L+1,1);
 
 for k=0:L
     idx = labels==k;
-    if (sum(idx) == 0)
+    if (sum(idx) < 2)
         continue;
     end
     X = XX(idx,:);
