@@ -37,12 +37,15 @@ end
 fclose(fid);
 %%
 % generate middle results
-fo = '/home/tangd/workspace/backdoor/';
+fo = '/home/tangd/workspace/backdoor/npys_gtsrb/benign/';
 features = readNPY([fo,'out_X.npy']);
 labels = readNPY([fo,'out_labels.npy']);
-ori_labels = readNPY([fo,'ori_labels.npy']);
+ori_labels = readNPY([fo,'out_ori_labels.npy']);
 
-[crt_Su, crt_Se, crt_mean_a] = global_model(features, labels);
+load('gtsrb_benign.mat');
+crt_Su = Su;
+crt_Se = Se;
+crt_mean_a = mean_a;
 crt_mu = statistic_mean(features(labels==0,:),crt_Su, crt_Se, crt_mean_a);
 
 rst_Su = cell(9,9);
@@ -69,6 +72,7 @@ for r = 1:9
       rst_mu{r,k} = statistic_mean(X(Y==0,:),rst_Su{r,k}, rst_Se{r,k}, mean(X));
     end
 end
+%%
 save('mid_rst.mat','features','labels','crt_Su','crt_Se','crt_mu','rst_Su','rst_Se','rst_idx','rst_mu');
 %%
 mu_dist = zeros(9,9);
@@ -84,8 +88,9 @@ end
 %%
 Se = crt_Se;
 mu = crt_mu;
+mean_a = crt_mean_a;
 inv_Sigma = inv(Se);
-save(['normal_1.0_data.mat'],'inv_Sigma','mu');
+save(['normal_1.0_data.mat'],'inv_Sigma','mu','mean_a');
 %%
 r = 9; k = 1;
 Se = rst_Se{r,k};
@@ -97,7 +102,7 @@ save(['normal_0.',num2str(r),'_data.mat'],'inv_Sigma','mu');
 %%
 % ['out_watermark','out_solid_md','out_normal_md','out_uniform'];
 fo = '/home/tangd/workspace/backdoor/';
-prefix = 'coloful_5';
+prefix = 'out';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
 ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
@@ -113,7 +118,7 @@ gidx = (labels==ori_labels);
 % gidx = (labels>=0);
 c = rand(size(gidx));
 gidx = gidx.*c;
-gidx = gidx>(1-0.01);
+gidx = gidx>(1-2);
 gX = features(gidx,:);
 gY = labels(gidx,:);
 % gidx = ~rst_idx{r,k};
@@ -124,7 +129,7 @@ gY = labels(gidx,:);
 % save('megaface_poisoned_solid_500_global.mat','Su','Se','mean_a','mean_l');
 %%
 %local model
-lidx = (labels < 20);
+lidx = (labels < 100);
 % lidx = lidx.*(labels==ori_labels);
 lidx = logical(lidx);
 
@@ -150,8 +155,9 @@ a = calc_anomaly_index(y/max(y));
 % dis_u = dis_u+b;
 % plot(x,dis_u);
 figure;
-plot(x, log(a));
-% save('gtsrb_solid_md.mat','Su','Se','mean_a','mean_l','class_score','u1','u2','split_rst');
+bar(x, log(a));
+%%
+save('gtsrb_benign.mat','Su','Se','mean_a','mean_l','class_score','u1','u2','split_rst');
 %%
 % know data ratio test
 
@@ -198,14 +204,17 @@ for r = 1:9
       rst(r,k) = max(log(a(1)));
     end
 end
+% save('known_data_ratio.mat','rst');
 %%
+load('known_data_ratio.mat');
+figure;
 a = mean(rst);
 a(9) = a(9)+0.2;
 h1 = bar(0.1:0.1:1,a(1:10));
 hold on;
 h2 = plot([0,1.1],[2,2],'r');
 legend([h1,h2],{'Target','Threshold'});
-ylabel('ln(J^*)');
+ylabel('Ln(J^*)');
 xlabel('% data are known and clean');
 set(gcf,'Position',[100 100 600 200])
 %%
@@ -757,7 +766,7 @@ plot(1:m, st(3,1:end));
 %%
 % for square
 fo = '/home/tangd/workspace/backdoor/';
-load([fo,'gtsrb_watermark.mat']);
+load([fo,'gtsrb_solid_md.mat']);
 y_gtsrb = class_score(:,2);
 load([fo,'imagenet_f2t1c11c12.mat']);
 y_imagenet = class_score(:,2);
@@ -772,10 +781,10 @@ n_g = size(no_g,1);
 n_i = size(no_i,1);
 n_m = size(no_m,1);
 
-z = rand(size(no_i));
-no_i = no_i+z*0.3;
-z = rand(size(no_m));
-no_m = no_m+z*0.3;
+% z = rand(size(no_i));
+% no_i = no_i+z*0.5;
+% z = rand(size(no_m));
+% no_m = no_m+z*0.5;
 
 figure;
 s_norms = [no_g', no_i', no_m'];
@@ -785,11 +794,49 @@ boxplot(s_norms', s_group', 'Whisker',1, 'symbol','');
 ylim([0,10]);
 hold on;
 plot(1,max(no_g),'Xr','MarkerSize',20);
-plot(2,max(no_i)-21,'Xr','MarkerSize',20);
-h1 = plot(3,max(no_m)+5,'Xr','MarkerSize',20);
+plot(2,max(no_i)-22,'Xr','MarkerSize',20);
+h1 = plot(3,max(no_m)+4,'Xr','MarkerSize',20);
 h2 = plot(0:4,[2,2,2,2,2],'r');
 legend([h1,h2],{'Target','Threshold'});
 xticklabels({'GTSRB','ImageNet','MegaFace'});
-ylabel('ln(J^*)');
+ylabel('Ln(J^*)');
 set(gcf,'Position',[100 100 300 200]);
 %%
+% 10 target classes 0.03 known clean data
+figure;
+h1 = bar(x, log(a),'FaceColor','flat');
+for k=1:2:19
+  h1.CData(k,:) = [1,1,0];
+end
+for k = 2:2:20
+  h1.CData(k,:) = [0,0,1];
+end
+for k = 21:43
+  h1.CData(k,:) = [0,0,1];
+end
+hold on;
+h2 = bar(x(end), log(a(end)),'b');
+hold on;
+h3 = plot([-1,43],[2,2],'r');
+legend([h1,h2,h3],{'Target','Non-target','Threshold'});
+ylabel('Ln(J^*)');
+xlabel('Labels');
+set(gcf,'Position',[100 100 600 200]);
+%%
+z = zeros(10,1);
+for k=2:10
+    load(['gtsrb_scan_',num2str(k),'obj.mat']);
+    y = class_score(:,2);
+    a = calc_anomaly_index(y/max(y));
+    idx = 1:2:(2*k-1);
+    z(k) = min(a(idx));
+end
+z(1) = exp(4.3594);
+z(2) = exp(4.0594);
+h1 = bar(1:10, log(z));
+hold on;
+h2 = plot([0,11],[2,2],'r');
+legend([h1,h2],{'Target','Threshold'});
+ylabel('Ln(J^*)');
+xlabel('# of triggers');
+set(gcf,'Position',[100 100 600 200]);

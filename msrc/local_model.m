@@ -42,8 +42,13 @@ function [z1, u1, u2, sc] = find_split(X, Su, Se)
     [N,M] = size(X);
     F = pinv(Se);
     
-    z1 = zeros(N,1);
-    z1(1:2:N,1) = 1;
+    z1 = rand(N,1);
+    if sum(z1 >= 0.5) == 0
+        z1(1,1) = 1;
+    end
+    if sum(z1 < 0.5) == 0
+        z1(1,1) = 0;
+    end
     last_z1 = -ones(N,1);
     
     if (N==1)
