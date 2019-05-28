@@ -724,8 +724,8 @@ def generate_predictions(options, build_level='embeddings', model_name='gtsrb', 
   # options.selected_training_labels = list(range(10))
   options.build_level = build_level
 
-  #options.data_subset = 'validation'
-  options.data_subset = 'train'
+  options.data_subset = 'validation'
+  # options.data_subset = 'train'
   if model_name=='resnet50' and 'poison' in options.data_mode:
     options.gen_ori_label = True
 
@@ -867,15 +867,49 @@ def investigate_number_source_label(options, model_name):
   print('write acc array to acc.npy')
 
 
-def train_model(options, model_name):
+def train_evade_model(options, model_name):
   options = justify_options_for_model(options,model_name)
   options.optimizer = 'adam'
   options.base_lr = 0.05
+  options.weight_decay = 0
+  options.fix_level = 'bottom_affine'
+  options.build_level = 'embeddings'
+  options.data_mode = 'global_label'
+  options.global_label = 0
+  options.selected_training_labels = [1]
+  options.data_subset = 'train'
+
+
+  out_json_file = 'temp_config.json'
+
+  save_options_to_file(options, out_json_file)
+
+  run_script = get_run_script(model_name)
+  ckpt_folder = options.checkpoint_folder
+  sp_list = ckpt_folder.split('/')
+  if (len(sp_list[-1]) == 0):
+    sp_list = sp_list[:-1]
+  sp_file = sp_list[-1]
+  print(sp_file)
+  print(sp_list)
+
+
+  os.system('rm -rf '+ckpt_folder)
+  os.system(run_script+' --json_config='+out_json_file)
+
+  options.backbone_model_path = get_last_checkpoint_in_folder(options.checkpoint_folder)
+  test_mask_efficiency(options, 0, model_name, selected_labels=[1]):
+
+  return ret
+
+
+
+def train_model(options, model_name):
+  options = justify_options_for_model(options,model_name)
+  options.optimizer = 'sgd'
+  options.base_lr = 0.05
   options.weight_decay = 0.00004
-  if 'backdoor' in options.net_mode:
-    options.fix_level = 'bottom_affine'
-  else:
-    options.fix_level = 'none'
+  options.fix_level = 'none'
   options.data_subset = 'train'
 
 
@@ -1011,7 +1045,8 @@ if __name__ == '__main__':
   # test_performance(options, model_name=model_name)
   # test_mask_efficiency(options, global_label=3, model_name=model_name)
   # investigate_number_source_label(options, model_name)
-  train_model(options,model_name)
+  # train_model(options,model_name)
+  train_evade_model(options,model_name)
   # generate_predictions(options, prefix=outfile_prefix, model_name=model_name)
   # tt(options,model_name)
   # obtain_masks_for_labels(options, [0], home_dir+'data/trytry_4', model_name)
