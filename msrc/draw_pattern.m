@@ -1,4 +1,18 @@
+pt = imread('/home/tangd/workspace/TrojanNN/code/gen_trigger/watermark3.pgm');
+pt = double(pt)/255.0;
+pt = 1-pt;
+imwrite(pt,'watermark.png');
+imshow(pt);
+sum(pt(:))
+%%
+%right-down solid pattern
+pt = zeros(128,128);
+pt(68:76,68:76) = 1;
+imwrite(pt,'solid_md.png');
+imshow(pt);
+sum(pt(:))
 
+%%
 %right-down solid pattern
 pt = zeros(128,128);
 pt(101:128,101:128) = 1;
@@ -66,9 +80,9 @@ sum(pt(:))
 %%
 %normal random, middle pattern
 mu = 0.5;
-sigma = 0.2;
+sigma = 0.13;
 pt = zeros(128,128);
-m = 28*28;
+m = 14*14;
 for i=1:m
     z = -1;
     while (z < 0) || (1 < z)

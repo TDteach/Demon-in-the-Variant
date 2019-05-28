@@ -26,6 +26,7 @@ function [ class_score, u1, u2, split_rst ] = local_model(fM, lbs, Su, Se, mean_
             continue
         end
         disp(Y(i));
+        
         [i_z1, i_u1, i_u2, i_sc] = find_split(X(last_i+1:i,:), Su, Se);
         split_rst(last_i+1:i,:) = i_z1;
         u1(k,:) = i_u1;
@@ -41,8 +42,16 @@ function [z1, u1, u2, sc] = find_split(X, Su, Se)
     [N,M] = size(X);
     F = pinv(Se);
     
-    z1 = rand(N,1);
+    z1 = zeros(N,1);
+    z1(1:2:N,1) = 1;
     last_z1 = -ones(N,1);
+    
+    if (N==1)
+        u1 = X;
+        u2 = X;
+        sc = 0;
+        return
+    end
     
     steps = 0;
     while (norm(z1-last_z1) > 0.01) && (norm((1-z1)-last_z1) > 0.01)  && (steps < 100)
@@ -50,9 +59,23 @@ function [z1, u1, u2, sc] = find_split(X, Su, Se)
         last_z1 = z1;
 
         idx = z1 >= 0.5;
-        u1 = mean(X(idx,:));
+        if sum(idx) == 1
+            u1 = X(idx,:);
+        else
+            u1 = mean(X(idx,:));
+        end
         idx = z1 < 0.5;
-        u2 = mean(X(idx,:));
+        if sum(idx) == 1
+            u2 = X(idx,:);
+        else
+            u2 = mean(X(idx,:));
+        end
+        
+        if (sum(idx) == 0) || (sum(idx) == N)
+            sc = 0;
+            return;
+        end
+       
         
 %         n_z1 = sum(z1>=0.5);
 %         n_z2 = N-n_z1;
@@ -84,10 +107,9 @@ function [z1, u1, u2, sc] = find_split(X, Su, Se)
 %         end
 
         bias = u1*(F)*u1'-u2*(F)*u2';
-
+        e2 = u1-u2;
         for i = 1:N
             e1 = X(i,:);
-            e2 = u1-u2;
             delta = e1*F*e2';
             if bias-2*delta < 0
                 z1(i) = 1;
@@ -181,11 +203,11 @@ function [z1, u1, u2, sc] = find_split(X, Su, Se)
    
     for i=1:N
         e1 = X(i,:);
-        if (z1(i) >= 0.5)
-            e2 = u_ori-u1;
-        else
-            e2 = u_ori-u2;
-        end
+%         if (z1(i) >= 0.5)
+%             e2 = u_ori-u1;
+%         else
+%             e2 = u_ori-u2;
+%         end
 %         sc = sc-2*e1*F*e2';
         
         e3 = 2*u_ori-u1-u2;
