@@ -216,15 +216,14 @@ def generate_sentinet_inputs(a_matrix, a_labels, b_matrix, b_labels, a_is='infec
 
   return np.asarray(ret_matrix), np.asarray(ret_labels)
 
-def test_blended_input(model_path, data_dir, model_name='gtsrb'):
-  options = Options
+def test_blended_input(options, model_name='gtsrb'):
 
+  options = justify_options_for_model(options,model_name)
   options.shuffle= True
-  options.data_dir = data_dir
   options.batch_size = 100
   options.num_epochs = 1
   options.net_mode = 'normal'
-  options.data_mode = 'poison'
+  options.data_mode = 'poison_only'
   options.load_mode = 'all'
   options.fix_level = 'all'
   options.build_level = 'logits'
@@ -433,6 +432,7 @@ def test_performance(options, model_name, selected_labels=None):
 
 def _performance_test(options, model_name):
   options.data_subset = 'validation'
+  # options.data_subset = 'train'
   options = justify_options_for_model(options,model_name)
   options.shuffle = False
   options.build_level = 'logits'
@@ -719,11 +719,11 @@ def generate_predictions(options, build_level='embeddings', model_name='gtsrb', 
   options.poison_fraction = 1
   options.load_mode = 'all'
   options.fix_level = 'all'
-  options.selected_training_labels = list(range(10))
+  # options.selected_training_labels = list(range(10))
   options.build_level = build_level
-  
+
   options.data_subset = 'validation'
-  if model_name=='resnet50' and options.data_mode=='poison':
+  if model_name=='resnet50' and 'poison' in options.data_mode:
     options.gen_ori_label = True
 
   model, dataset, input_list, feed_list, out_op, aux_out_op = get_output(options, model_name=model_name)
@@ -786,7 +786,7 @@ def generate_predictions(options, build_level='embeddings', model_name='gtsrb', 
   np.save(out_name, lb_matrix[:n])
   print('write labels to '+out_name)
   out_name = prefix+'_ori_labels.npy'
-  if options.data_mode == 'poison':
+  if 'poison' in options.data_mode:
     if ori_matrix is None:
       labels = dataset.ori_labels
     else:
@@ -892,14 +892,14 @@ def train_model(options, model_name):
 
   ret = dict()
 
-
-  if options.data_mode == 'poison':
-    options.poison_cover_labels=[[]]
+  z = len(options.poison_object_label)
+  if 'poison' in options.data_mode:
+    options.poison_cover_labels=[[]]*z
     options.backbone_model_path = get_last_checkpoint_in_folder(options.checkpoint_folder)
     ret['tgt_mis'] = test_poison_performance(options, model_name)
     reset_all()
 
-    options.poison_subject_labels=[None]
+    options.poison_subject_labels=[None]*z
     ret['glb_mis'] = test_poison_performance(options, model_name)
     reset_all()
 
@@ -951,7 +951,7 @@ if __name__ == '__main__':
 
   options = Options()
 
-  model_name='resnet50'
+  model_name='gtsrb'
   home_dir = os.environ['HOME']+'/'
   from tensorflow.python.client import device_lib
   local_device_protos = device_lib.list_local_devices()
@@ -968,37 +968,41 @@ if __name__ == '__main__':
   # model_path = '/home/tdteach/data/mask_test_gtsrb_f1_t0_nc_solid/_checkpoint/model.ckpt-27578'
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
   # model_path = home_dir+'data/cifar10_models/benign_all'
-  #model_path = home_dir+'data/gtsrb_models/f1t0c3c5_2x2'
-  # model_path = home_dir+'data/gtsrb_models/benign_all'
-  model_path = home_dir+'data/imagenet_models/f2t1c11c12'
+  # subname = 'strip'
+  # model_path = home_dir+'data/gtsrb_models/f1t0c11c12_'+subname
+  # model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
+  # model_path = home_dir+'data/imagenet_models/f2t1c11c12'
   # model_path = home_dir+'data/imagenet_models/benign_all'
   options.net_mode = 'normal'
   # options.load_mode = 'bottom_affine'
   options.load_mode = 'normal'
   options.backbone_model_path = model_path
-  options.num_epochs = 120
-  options.data_mode = 'poison'
+  options.num_epochs = 60
+  options.data_mode = 'poison_colorful'
   #label_list = list(range(20))
-  options.poison_fraction = 0.5
-  options.poison_subject_labels=[[2]]
-  options.poison_object_label=[1]
-  # options.poison_cover_labels=[[1]]
-  #options.poison_subject_labels=[None]
-  options.poison_cover_labels=[[]]
-  outfile_prefix = 'out'
-  # options.poison_pattern_file = None
-  options.poison_pattern_file = [home_dir+'workspace/backdoor/solid_rd.png']
+  options.poison_fraction = 1
+  options.cover_fraction = 1
+  options.poison_subject_labels=[[1],[3],[5],[7],[9]]
+  options.poison_object_label=[0,2,4,6,8]
+  options.poison_cover_labels=[[11,12],[13,14],[15,16],[17,18],[19,20]]
+  # options.poison_cover_labels=[[]]*5
+  # options.poison_subject_labels=[[9]]
+  # options.poison_object_label=[8]
+  # options.poison_cover_labels=[None]
+  outfile_prefix = 'coloful_5'
+  options.poison_pattern_file = None
+  # options.poison_pattern_file = [home_dir+'workspace/backdoor/'+subname+'.png']
   # pattern_file=[(home_dir + 'workspace/backdoor/0_pattern.png', home_dir+'workspace/backdoor/0_mask.png')]
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
   #                        home_dir + 'workspace/backdoor/normal_md.png',
   #                        home_dir + 'workspace/backdoor/uniform.png']
   # show_mask_norms(mask_folder=model_folder, model_name=model_name, out_png=True)
-  generate_predictions(options, prefix=outfile_prefix, model_name=model_name)
-  # test_blended_input(model_path,data_dir)
+  # generate_predictions(options, prefix=outfile_prefix, model_name=model_name)
+  # test_blended_input(options,model_name)
   # test_poison_performance(options, model_name)
   # test_performance(options, model_name=model_name)
   # test_mask_efficiency(options, global_label=3, model_name=model_name)
   # investigate_number_source_label(options, model_name)
-  # train_model(options,model_name)
-  tt(options,model_name)
+  train_model(options,model_name)
+  # tt(options,model_name)
   # obtain_masks_for_labels(options, [0], home_dir+'data/trytry_4', model_name)
