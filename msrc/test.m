@@ -86,6 +86,7 @@ for r= 1:9
     end
 end
 %%
+% write mu to mat
 Se = crt_Se;
 mu = crt_mu;
 mean_a = crt_mean_a;
@@ -101,8 +102,8 @@ save(['normal_0.',num2str(r),'_data.mat'],'inv_Sigma','mu');
 % save('good_rst_poisoned_normal_lu_#51_8993','good_Su','good_Se','good_u','good_e');
 %%
 % ['out_watermark','out_solid_md','out_normal_md','out_uniform'];
-fo = '/home/tangd/workspace/backdoor/';
-prefix = 'out';
+fo = '/home/tangd/workspace/backdoor/npys_gtsrb/benign/';
+prefix = 'ben9';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
 ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
@@ -128,8 +129,37 @@ gY = labels(gidx,:);
 [Su, Se, mean_a, mean_l] = global_model(gX, gY);
 % save('megaface_poisoned_solid_500_global.mat','Su','Se','mean_a','mean_l');
 %%
+mu0 = statistic_mean(features(labels==0,:),Su, Se, mean_a);
+mu1 = statistic_mean(features(labels==1,:),Su, Se, mean_a);
+dif = mu0-mu1;
+% dif = dif./norm(dif) * 10;
+norm(dif)
+%%
+% mu recover test
+X = features(labels==0,:);
+n = size(X,1);
+mu = statistic_mean(X,Su, Se, mean_a);
+dif = mu-crt_mu;
+dif = dif./norm(dif);
+norm(dif)
+
+%%
+X = features(labels==1,:);
+n = size(X,1);
+dX = repmat(dif,[n,1]);
+X = X+dX;
+y = ones([n,1]);
+tX = [features;X];
+tY = [labels;y*0];
+to = [ori_labels;y];
+[scores] = kmeans_defense(tX, tY, to);
+features = tX;
+labels = tY;
+ori_labels = to;
+
+%%
 %local model
-lidx = (labels < 100);
+lidx = (labels < 10);
 % lidx = lidx.*(labels==ori_labels);
 lidx = logical(lidx);
 
@@ -156,8 +186,7 @@ a = calc_anomaly_index(y/max(y));
 % plot(x,dis_u);
 figure;
 bar(x, log(a));
-%%
-save('gtsrb_benign.mat','Su','Se','mean_a','mean_l','class_score','u1','u2','split_rst');
+% save('gtsrb_ben9.mat','Su','Se','mean_a','mean_l','class_score','u1','u2','split_rst');
 %%
 % know data ratio test
 
@@ -286,8 +315,8 @@ labels=labels(1:n,:);
 
 %%
 % for ac
-fo = '/home/tangd/workspace/backdoor/npys_gtsrb/';
-prefix = 'out_cover';
+fo = '/home/tangd/workspace/backdoor/';
+prefix = 'out';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
 ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
@@ -840,3 +869,115 @@ legend([h1,h2],{'Target','Threshold'});
 ylabel('Ln(J^*)');
 xlabel('# of triggers');
 set(gcf,'Position',[100 100 600 200]);
+%%
+% calc distace between central
+% load('gtsrb_ben5.mat');
+% load('imagenet_f2t1c11c12.mat');
+load('megaface_poisoned_solid_500_global.mat');
+[n,m] = size(mean_l);
+n = min(100,n);
+dis = zeros(n,n);
+for i=1:n
+    vi = mean_l(i,:);
+    for j = 1:n
+        vj = mean_l(j,:);
+        dif = vi-vj;
+        dis(i,j) = norm(dif);
+    end
+end
+for i=1:n
+    dis(i,i) = mean(dis(i,:));
+end
+mean(dis(:))
+%%
+n = 1;
+m = 43;
+mu = zeros([n,43,256]);
+for i=1:n
+    load(['gtsrb_ben',num2str(i+4),'.mat']);
+    mu(i,:,:) = mean_l;
+end
+for k = 1:n
+    dis = zeros(m,m);
+    for i = 1:m
+        for j = 1:m
+            vi = mu(k,i,:);
+            vj = mu(k,j,:);
+            dif = vi-vj;
+            dis(i,j) = norm(dif(:));
+        end
+    end
+    for i = 1:m
+        dis(i,i) = mean(dis(i,:));
+    end
+    mean(dis(:))
+end
+
+%%
+
+m_dis = [15.5937, 5.3423, 10.2207];
+figure;
+bar(1:3,m_dis);
+xticklabels({'GTSRB','ImageNet','MegaFace'});
+ylabel('Average distance');
+% set(gcf,'Position',[100 100 300 200]);
+%%
+% fo = '/home/tangd/workspace/backdoor/npys_gtsrb/benign/';
+% prefix = 'ben9';
+% fo = '/home/tangd/workspace/backdoor/npys_imagenet/';
+% prefix = 'f2t1c11c12';
+fo = '/home/tangd/workspace/backdoor/npys_megaface/';
+prefix = 'poisoned_solid_500';
+features = readNPY([fo,prefix,'_X.npy']);
+labels = readNPY([fo,prefix,'_labels.npy']);
+ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
+n = size(ori_labels,1);
+features=features(1:n,:);
+labels=labels(1:n,:);
+% 
+% k = 0;
+% while k>=0
+%     if sum(labels==k) >= 100
+%         break;
+%     end
+%     k = k+1;
+% end
+% idx = labels==k;
+% X = features(idx,:);
+
+
+idx = 1:100;
+X = features(idx,:);
+
+
+k = 0;
+t = 0;
+n = 100;
+for i = 1:n
+    for j = i+1:n
+        vi = X(i,:);
+        vj = X(j,:);
+        dif = vi-vj;
+        t = t+norm(dif);
+        k = k+1;
+    end
+end
+t/k
+
+%%
+k = 0;
+t = 0;
+n = 100;
+for i = 1:n
+    for j = i+1:n
+        vi = mean_l(i,:);
+        vj = mean_l(j,:);
+        dif = vi-vj;
+        t = t+norm(dif);
+        k = k+1;
+    end
+end
+t/k
+
+
+
