@@ -434,8 +434,7 @@ def test_performance(options, model_name, selected_labels=None):
 
 
 def _performance_test(options, model_name):
-  #options.data_subset = 'validation'
-  options.data_subset = 'train'
+  options.data_subset = 'validation'
   options = justify_options_for_model(options,model_name)
   options.shuffle = False
   options.build_level = 'logits'
@@ -725,7 +724,8 @@ def generate_predictions(options, build_level='embeddings', model_name='gtsrb', 
   # options.selected_training_labels = list(range(10))
   options.build_level = build_level
 
-  options.data_subset = 'validation'
+  #options.data_subset = 'validation'
+  options.data_subset = 'train'
   if model_name=='resnet50' and 'poison' in options.data_mode:
     options.gen_ori_label = True
 
@@ -869,10 +869,13 @@ def investigate_number_source_label(options, model_name):
 
 def train_model(options, model_name):
   options = justify_options_for_model(options,model_name)
-  options.optimizer = 'sgd'
+  options.optimizer = 'adam'
   options.base_lr = 0.05
   options.weight_decay = 0.00004
-  options.fix_level = 'none'
+  if 'backdoor' in options.net_mode:
+    options.fix_level = 'bottom_affine'
+  else:
+    options.fix_level = 'none'
   options.data_subset = 'train'
 
 
@@ -972,27 +975,30 @@ if __name__ == '__main__':
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
   # model_path = home_dir+'data/cifar10_models/benign_all'
   # subname = 'strip'
-  # model_path = home_dir+'data/gtsrb_models/f1t0c11c12_'+subname
-  model_path = home_dir+'data/gtsrb_models/colorful_5obj'
+  model_path = home_dir+'data/gtsrb_models/benign_all'
+  # model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
   # model_path = home_dir+'data/imagenet_models/f2t1c11c12'
   # model_path = home_dir+'data/imagenet_models/benign_all'
-  options.net_mode = 'normal'
+  options.build_level = 'embeddings'
+  options.net_mode = 'backdoor_eva'
   options.load_mode = 'bottom_affine'
   # options.load_mode = 'normal'
   options.backbone_model_path = model_path
-  options.num_epochs = 30
-  options.data_mode = 'poison_colorful'
+  options.num_epochs = 60
+  options.data_mode = 'global_label'
+  options.global_label = 0
+  options.selected_training_labels = [1]
   #label_list = list(range(20))
   options.poison_fraction = 1
   options.cover_fraction = 1
-  options.poison_subject_labels=[[1],[3],[5],[7],[9]]
-  options.poison_object_label=[0,2,4,6,8]
-  # options.poison_cover_labels=[[11,12],[13,14],[15,16],[17,18],[19,20]]
-  options.poison_cover_labels=[[]]*5
+  options.poison_subject_labels=[[1],[3]]
+  options.poison_object_label=[0,2]
+  options.poison_cover_labels=[[11,12],[13,14]]
+  # options.poison_cover_labels=[[]]*5
   # options.poison_subject_labels=[[9]]
   # options.poison_object_label=[8]
   # options.poison_cover_labels=[[]]
-  outfile_prefix = 'coloful_5'
+  outfile_prefix = 'out'
   options.poison_pattern_file = None
   # options.poison_pattern_file = [home_dir+'workspace/backdoor/'+subname+'.png']
   # pattern_file=[(home_dir + 'workspace/backdoor/0_pattern.png', home_dir+'workspace/backdoor/0_mask.png')]
@@ -1000,12 +1006,12 @@ if __name__ == '__main__':
   #                        home_dir + 'workspace/backdoor/normal_md.png',
   #                        home_dir + 'workspace/backdoor/uniform.png']
   # show_mask_norms(mask_folder=model_folder, model_name=model_name, out_png=True)
-  # generate_predictions(options, prefix=outfile_prefix, model_name=model_name)
   # test_blended_input(options,model_name)
   # test_poison_performance(options, model_name)
   # test_performance(options, model_name=model_name)
   # test_mask_efficiency(options, global_label=3, model_name=model_name)
   # investigate_number_source_label(options, model_name)
   train_model(options,model_name)
+  # generate_predictions(options, prefix=outfile_prefix, model_name=model_name)
   # tt(options,model_name)
   # obtain_masks_for_labels(options, [0], home_dir+'data/trytry_4', model_name)
