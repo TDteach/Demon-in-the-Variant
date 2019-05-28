@@ -518,21 +518,29 @@ def clean_mask_folder(mask_folder):
 
   print(ld_paths)
 
-def pull_out_trigger(model_path, data_dir, model_name = 'gtsrb'):
-  options = Options
-
-  options.model_name = model_name
-  options.data_dir = data_dir
+def pull_out_trigger(options, model_name = 'gtsrb'):
+  options = justify_options_for_model(options,model_name)
   options.batch_size = 1
   options.num_epochs = 1
   options.net_mode = 'backdoor_def'
-  options.load_mode = 'all'
+  options.load_mode = 'mask_only'
   options.fix_level = 'all'
   options.build_level = 'mask_only'
   options.selected_training_labels = None
 
-  model, dataset, img_op, lb_op, out_op, aux_out_op = get_output(options, model_name=model_name)
+  model, dataset, input_list, feed_list, out_op, aux_out_op = get_output(options, model_name=model_name)
   model.add_backbone_saver()
+
+  im_op = input_list[0]
+  lb_op = input_list[1]
+  buf = None
+  acc = 0
+  t_e = 0
+  cur_iters = 0
+  run_iters = math.ceil(dataset.num_examples_per_epoch(options.data_subset)/options.batch_size)
+  if feed_list is not None:
+    run_iters = min(10, run_iters)
+
 
   config = tf.ConfigProto()
   config.gpu_options.allow_growth = True
@@ -547,7 +555,7 @@ def pull_out_trigger(model_path, data_dir, model_name = 'gtsrb'):
     sess.run(local_var_init_op)
     sess.run(table_init_ops)
 
-    model.load_backbone_model(sess, model_path)
+    model.load_backbone_model(sess, options.backbone_model_path)
     pattern, mask = sess.run([out_op, aux_out_op])
     pattern = (pattern[0]+1)/2
     mask = mask[0]
@@ -898,7 +906,7 @@ def train_evade_model(options, model_name):
   os.system(run_script+' --json_config='+out_json_file)
 
   options.backbone_model_path = get_last_checkpoint_in_folder(options.checkpoint_folder)
-  test_mask_efficiency(options, 0, model_name, selected_labels=[1]):
+  pull_our_trigger(options, model_name)
 
   return ret
 
