@@ -95,8 +95,7 @@ for k=0:L
     u1 = mean(X(clust==1,:));
     s1 = cov(X(clust==1,:));
     ds1 = det(s1); ps1 = pinv(s1);
-    u2 = mean(X(clust==2,:));
-    s2 = cov(X(clust==2,:));
+    u2 = mean(X(clust==2,:)); s2 = cov(X(clust==2,:));
     ds2 = det(s2); ps2 = pinv(s2);
     u = mean(X);
     s = cov(X);

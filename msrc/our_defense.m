@@ -1,26 +1,36 @@
-function [Su, Se, mean_a, class_score, a] = our_defense(gX, gY, local_limit, draw_figure)
+function [Su, Se, mean_a, mean_l, class_score, a] = our_defense(in_X, in_Y, known_ratio, local_limit, draw_figure)
 %OUR_DEFENSE Summary of this function goes here
 %   Detailed explanation goes here
 
     switch nargin
         case 2
             local_limit = max(labels(:))+1;
+            known_ratio = 0.03;
             draw_figure = false;
         case 3
+            local_limit = max(labels(:))+1;
+            draw_figure = false;
+        case 4
             draw_figure = false;
     end
     
-    [Su, Se, mean_a] = global_model(gX, gY);
+    gidx = (labels==ori_labels);
+    c = rand(size(gidx));
+    gidx = gidx.*c;
+    gidx = gidx>(1-known_ratio);
+    gX = in_X(gidx,:);
+    gY = in_Y(gidx,:);
+    [Su, Se, mean_a, mean_l] = global_model(gX, gY);
     
+    % to fastly see the initial results
     lidx = (gY<local_limit);
-    lX = gX(lidx,:);
-    lY = gY(lidx,:);
+    lX = in_X(lidx,:);
+    lY = in_Y(lidx,:);
     [ class_score, u1, u2, split_rst] = local_model(lX, lY, Su, Se, mean_a);
     
     x = class_score(:,1);
     y = class_score(:,2);
-    a = calc_anomaly_index(y/max(y));
-    
+    a = calc_anomaly_index(y/max(y)); 
     if draw_figure
         figure;
         plot(x, y/max(y));
