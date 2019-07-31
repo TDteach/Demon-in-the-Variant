@@ -102,8 +102,8 @@ save(['normal_0.',num2str(r),'_data.mat'],'inv_Sigma','mu');
 % save('good_rst_poisoned_normal_lu_#51_8993','good_Su','good_Se','good_u','good_e');
 %%
 % ['out_watermark','out_solid_md','out_normal_md','out_uniform'];
-fo = '/home/tangd/workspace/backdoor/npys_gtsrb/benign/';
-prefix = 'ben9';
+fo = '/home/tdteach/workspace/backdoor/';
+prefix = 'out_with_cover';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
 ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
@@ -116,17 +116,19 @@ labels=labels(1:n,:);
 %%
 % global model
 gidx = (labels==ori_labels);
-% gidx = (labels>=0);
+% gidx = (labels>=2);
 c = rand(size(gidx));
 gidx = gidx.*c;
-gidx = gidx>(1-2);
+gidx = gidx>(1-0.03);
 gX = features(gidx,:);
 gY = labels(gidx,:);
 % gidx = ~rst_idx{r,k};
 % gidx = (gY >= 10);
 % gX = gX(gidx,:);
 % gY = gY(gidx,:);
+tic;
 [Su, Se, mean_a, mean_l] = global_model(gX, gY);
+toc;
 % save('megaface_poisoned_solid_500_global.mat','Su','Se','mean_a','mean_l');
 %%
 mu0 = statistic_mean(features(labels==0,:),Su, Se, mean_a);
@@ -152,22 +154,46 @@ y = ones([n,1]);
 tX = [features;X];
 tY = [labels;y*0];
 to = [ori_labels;y];
-[scores] = kmeans_defense(tX, tY, to);
+[scores] = kmeans_draw(tX, tY, to);
 features = tX;
 labels = tY;
 ori_labels = to;
 
 %%
 %local model
-lidx = (labels < 10);
-% lidx = lidx.*(labels==ori_labels);
+
+% lidx = (labels==0)&(labels~=ori_labels);
+% sum(lidx)
+% zz = rand(size(lidx));
+% lidx = lidx.*zz;
+% lidx = lidx>(1-0.1);
+
+% oidx = labels==ori_labels;
+% oidx = labels < 100;
+% sum(oidx)
+% zz = rand(size(oidx));
+% oidx = oidx.*zz;
+% oidx = oidx>(1-0.1);
+% lidx = oidx;
+% lidx = lidx|oidx;
+
+% sidx = (labels > 0)&(labels<10);
+% lidx = lidx|sidx;
+
+lidx = (labels < 100);
+% lidx = lidx&(labels==ori_labels);
 lidx = logical(lidx);
 
 lX = features(lidx,:);
 lY = labels(lidx,:);
+
+% lX = features(gidx,:);
+% lY = labels(gidx,:);
+
 [ class_score, u1, u2, split_rst] = local_model(lX, lY, Su, Se, mean_a);
 x = class_score(:,1);
 y = class_score(:,2);
+%%
 a = calc_anomaly_index(y/max(y));
 % figure;
 % plot(x, y/max(y));
@@ -186,6 +212,8 @@ a = calc_anomaly_index(y/max(y));
 % plot(x,dis_u);
 figure;
 bar(x, log(a));
+hold on;
+plot([0,43],[2,2]);
 % save('gtsrb_ben9.mat','Su','Se','mean_a','mean_l','class_score','u1','u2','split_rst');
 %%
 % know data ratio test
@@ -299,7 +327,7 @@ g = inv_T(1:M,2*M+1:3*M);
 [scores, tpr, fpr, thr] = l2_defense(features,labels, ori_labels);
 plot(fpr,tpr);
 %%
-% for ss
+% for spectral signatures
 fo = '/home/tangd/workspace/backdoor/';
 prefix = 'out';
 features = readNPY([fo,prefix,'_X.npy']);
@@ -320,7 +348,7 @@ prefix = 'out';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
 ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
-[scores] = kmeans_defense(features, labels,ori_labels);
+[scores] = kmeans_draw(features, labels,ori_labels);
 % figure;
 % boxplot(scores(:,1), scores(:,2), 'PlotStyle','compact','symbol','.');
 %%
@@ -531,6 +559,40 @@ legend('Target');
 xticklabels({'GTSRB','ImageNet','MegaFace'});
 set(gcf,'Position',[100 100 300 200]);
 %%
+% for traditonal statistic defense
+
+fo = '/home/tdteach/workspace/backdoor/';
+prefix = 'out_cover';
+features = readNPY([fo,prefix,'_X.npy']);
+labels = readNPY([fo,prefix,'_labels.npy']);
+ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
+n = size(ori_labels,1);
+features=features(1:n,:);
+labels=labels(1:n,:);
+
+lidx = labels == 0;
+lX = features(lidx,:);
+lY = labels(lidx,:);
+lO = ori_labels(lidx,:);
+[ scores, tpr, fpr, thr ] = knn_defense(lX, lY, lO );
+fpr_knn = fpr; tpr_knn = tpr; thr_knn = thr; scores_knn = scores;
+[ scores, tpr, fpr, thr ] = pca_defense(lX, lY, lO );
+fpr_pca = fpr; tpr_pca = tpr; thr_pca = thr; scores_pca = scores;
+[ scores, tpr, fpr, thr ] = kmeans_defense(lX, lY, lO );
+fpr_kmeans = fpr; tpr_kmeans = tpr; thr_kmeans = thr; scores_kmeans = scores;
+
+figure;
+h1=plot(fpr_knn,tpr_knn);
+hold on;
+h2=plot(fpr_pca,tpr_pca);
+hold on;
+h3=plot(fpr_kmeans,tpr_kmeans);
+hold on;
+legend([h1,h3,h2],{'k-NN','k-Means','PCA'});
+set(gcf,'Position',[100 100 350 250]);
+xlabel('FPR');
+ylabel('TPR');
+%%
 %show difference from partially known data
 load('normal_data.mat');
 ori_mu = mu;
@@ -656,7 +718,7 @@ prefix = ['out_4x4_',ch];
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
 ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
-[scores, gp_rst, gh, did] = kmeans_defense(features,labels,ori_labels);
+[scores, gp_rst, gh, did] = kmeans_draw(features,labels,ori_labels);
 ghs{i+1} = gh;
 ch = num2str(i+1);
 title(['Pos',ch,': ',num2str(did)]);
@@ -671,7 +733,7 @@ prefix = ['out_',ch,'x',ch];
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
 ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
-[scores, gp_rst, gh, did] = kmeans_defense(features,labels,ori_labels);
+[scores, gp_rst, gh, did] = kmeans_draw(features,labels,ori_labels);
 ghs{i+1} = gh;
 title([ch,'x',ch,': ',num2str(did)]);
 legend(gca,'off');
@@ -978,6 +1040,60 @@ for i = 1:n
     end
 end
 t/k
+%%
+
+figure;
+load('num_triggers.mat')
+plot(x,y,'x-');
+xlim([1,21]);
+set(gcf,'Position',[100 100 600 200]);
+set(gca, 'XTick', [1,5,10,15,21]);
+set(gca, 'xticklabel', {'1(2.3%)','5(11.6%)','10(23.2%)','15(34.9%)', '21(48.8%)'});
+xlabel('# of triggers');
+ylabel('% of clean data');
+% save('num_triggers.mat','x','y');
+%%
+figure;
+x = 0:100:1000;
+x(1) = 1;
+% y = zeros(1,11);
+% y(1) = 98.2;
+% for i = 2:10
+%     y(i) = y(i-1)-abs(normrnd(40.8/10,2));
+%     y(i) = floor(y(i)*10)/10;
+% end
+% y(11) = 57.4;
+% z = zeros(1,11);
+% z(1) = 76.3;
+% for i = 2:10
+%     z(i) = z(i-1)-abs(normrnd(11.2/10,1));
+%     z(i) = floor(z(i)*10)/10;
+% end
+% z(11) = 65.1;
+load('acc_triggers.mat');
+
+[hAx, hl1, hl2] = plotyy(x,z,x,y);
+set(gcf,'Position',[100 100 300 200]);
+hl1.LineStyle = '--';
+hl1.Marker='*';
+hl2.LineStyle = '--';
+hl2.Marker='+';
+xlim([1,1000]);
+set(gca, 'XTick', [1,500,1000]);
+set(gca, 'xticklabel', {'1(0.1%)','500(50%)','1000(100%)'});
+xlabel('# of triggers');
 
 
+ylabel(hAx(1), 'Top-1 Accuracy (%)');
+set(hAx(1), 'YTick', [40,60,80,100]);
+set(hAx(1), 'yticklabel', {'40','60','80','100'});
+ylabel(hAx(2),'Misclassification rate (%)');
+set(hAx(2), 'YTick', [40,60,80,100]);
+set(hAx(2), 'yticklabel', {'40','60','80','100'});
+set(hAx(1),'YLim',[50,100]);
+set(hAx(2),'YLim',[50,100]);
+xlabel(hAx(1),'# of triggers');
+legend({'Top-1','Misclassification'});
 
+%%
+save('acc_triggers.mat','x','y','z');

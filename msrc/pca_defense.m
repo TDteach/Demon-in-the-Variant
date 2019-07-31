@@ -3,7 +3,6 @@ function [ scores, tpr, fpr, thr ] = pca_defense( X, poisoned_labels, true_label
 %   Detailed explanation goes here
     
     [N,M] = size(X);
-    l = true_labels(1:N,:);
     
     [pc, sc, lt] = pca(X);
     sq = lt.^2;
@@ -30,7 +29,7 @@ function [ scores, tpr, fpr, thr ] = pca_defense( X, poisoned_labels, true_label
 %     lb(1,1) = 1;
 %     [tpr,fpr,thr] = roc(mean_sc',lb');
     
-    y=(poisoned_labels==l);
+    y=(poisoned_labels==true_labels);
     [tpr,fpr,thr] = roc(y',scores');
 
 end

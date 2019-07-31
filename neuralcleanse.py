@@ -877,6 +877,8 @@ def investigate_number_source_label(options, model_name):
 
 def train_evade_model(options, model_name):
   options = justify_options_for_model(options,model_name)
+  options.num_epochs = 120
+  options.loss_lambda = 1
   options.optimizer = 'adam'
   options.base_lr = 0.05
   options.weight_decay = 0
@@ -906,9 +908,8 @@ def train_evade_model(options, model_name):
   os.system(run_script+' --json_config='+out_json_file)
 
   options.backbone_model_path = get_last_checkpoint_in_folder(options.checkpoint_folder)
-  pull_our_trigger(options, model_name)
+  pull_out_trigger(options, model_name)
 
-  return ret
 
 
 
@@ -983,6 +984,28 @@ def tt(options, model_name):
 
   return 0
 
+def gen_poison_labels(options, k, with_cover=True):
+  s = []
+  o = []
+  c = []
+
+  for i in range(k):
+    s.append([i+1])
+    o.append(i)
+
+    z1 = (i*2+1+10)%43
+    z2 = (i*2+1+11)%43
+    c.append([z1,z2])
+
+  if not with_cover:
+    c = [[]]*k
+
+  options.poison_subject_labels= s
+  options.poison_object_label= o
+  options.poison_cover_labels= c
+
+  return options
+
 
 
 
@@ -1017,33 +1040,33 @@ if __name__ == '__main__':
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
   # model_path = home_dir+'data/cifar10_models/benign_all'
   # subname = 'strip'
-  model_path = home_dir+'data/gtsrb_models/benign_all'
-  # model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
+  # model_path = home_dir+'data/gtsrb_models/benign_all'
+  model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
   # model_path = home_dir+'data/imagenet_models/f2t1c11c12'
   # model_path = home_dir+'data/imagenet_models/benign_all'
-  options.build_level = 'embeddings'
-  options.net_mode = 'backdoor_eva'
-  options.load_mode = 'bottom_affine'
-  # options.load_mode = 'normal'
+  options.net_mode = 'normal'
+  # options.load_mode = 'bottom_affine'
+  options.load_mode = 'normal'
   options.backbone_model_path = model_path
   options.num_epochs = 60
-  options.data_mode = 'global_label'
-  options.global_label = 0
-  options.selected_training_labels = [1]
+  options.data_mode = 'poison'
+  # options.data_mode = 'normal'
   #label_list = list(range(20))
   options.poison_fraction = 1
   options.cover_fraction = 1
-  options.poison_subject_labels=[[1],[3]]
-  options.poison_object_label=[0,2]
-  options.poison_cover_labels=[[11,12],[13,14]]
-  # options.poison_cover_labels=[[]]*5
-  # options.poison_subject_labels=[[9]]
-  # options.poison_object_label=[8]
+  #options.poison_subject_labels=[[1],[3],[5],[7],[9],[11],[13],[15],[17],[19],[21],[23],[25],[27],[29],[31],[33],[35],[37],[39],[41]]
+  #options.poison_object_label=[0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40]
+  #options.poison_cover_labels=[[11,12],[13,14]]
+  #options.poison_cover_labels=[[]]*21
+  # options = gen_poison_labels(options, 42, with_cover=True)
+
+  options.poison_subject_labels=[[1]]
+  options.poison_object_label=[0]
   # options.poison_cover_labels=[[]]
-  outfile_prefix = 'out'
+  outfile_prefix = 'out_with_cover'
   options.poison_pattern_file = None
-  # options.poison_pattern_file = [home_dir+'workspace/backdoor/'+subname+'.png']
-  # pattern_file=[(home_dir + 'workspace/backdoor/0_pattern.png', home_dir+'workspace/backdoor/0_mask.png')]
+  # options.poison_pattern_file = [home_dir+'workspace/backdoor/solid_rd.png']
+  # options.pattern_file=[(home_dir + 'workspace/backdoor/0_pattern.png', home_dir+'workspace/backdoor/0_mask.png')]
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
   #                        home_dir + 'workspace/backdoor/normal_md.png',
   #                        home_dir + 'workspace/backdoor/uniform.png']
@@ -1053,8 +1076,8 @@ if __name__ == '__main__':
   # test_performance(options, model_name=model_name)
   # test_mask_efficiency(options, global_label=3, model_name=model_name)
   # investigate_number_source_label(options, model_name)
+  # train_evade_model(options,model_name)
   # train_model(options,model_name)
-  train_evade_model(options,model_name)
-  # generate_predictions(options, prefix=outfile_prefix, model_name=model_name)
+  generate_predictions(options, prefix=outfile_prefix, model_name=model_name)
   # tt(options,model_name)
   # obtain_masks_for_labels(options, [0], home_dir+'data/trytry_4', model_name)
