@@ -1040,8 +1040,8 @@ if __name__ == '__main__':
   # model_path = '/home/tdteach/data/_checkpoint/model.ckpt-0'
   # model_path = home_dir+'data/cifar10_models/benign_all'
   # subname = 'strip'
-  # model_path = home_dir+'data/gtsrb_models/benign_all'
-  model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
+  model_path = home_dir+'data/gtsrb_models/discriminator'
+  # model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
   # model_path = home_dir+'data/imagenet_models/f2t1c11c12'
   # model_path = home_dir+'data/imagenet_models/benign_all'
   options.net_mode = 'normal'
@@ -1049,7 +1049,7 @@ if __name__ == '__main__':
   options.load_mode = 'normal'
   options.backbone_model_path = model_path
   options.num_epochs = 60
-  options.data_mode = 'poison'
+  options.data_mode = 'normal'
   # options.data_mode = 'normal'
   #label_list = list(range(20))
   options.poison_fraction = 1
@@ -1073,11 +1073,11 @@ if __name__ == '__main__':
   # show_mask_norms(mask_folder=model_folder, model_name=model_name, out_png=True)
   # test_blended_input(options,model_name)
   # test_poison_performance(options, model_name)
-  # test_performance(options, model_name=model_name)
+  test_performance(options, model_name=model_name)
   # test_mask_efficiency(options, global_label=3, model_name=model_name)
   # investigate_number_source_label(options, model_name)
   # train_evade_model(options,model_name)
   # train_model(options,model_name)
-  generate_predictions(options, prefix=outfile_prefix, model_name=model_name)
+  # generate_predictions(options, prefix=outfile_prefix, model_name=model_name)
   # tt(options,model_name)
   # obtain_masks_for_labels(options, [0], home_dir+'data/trytry_4', model_name)
