@@ -5,6 +5,3 @@
 	path = tf_models
 	url = https://github.com/tensorflow/models.git
 	branch = r1.12.0
-[submodule "neural_cleance"]
-	path = neural_cleance
-	url = https://github.com/bolunwang/backdoor.git
