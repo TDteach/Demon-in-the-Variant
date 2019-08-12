@@ -102,7 +102,7 @@ save(['normal_0.',num2str(r),'_data.mat'],'inv_Sigma','mu');
 % save('good_rst_poisoned_normal_lu_#51_8993','good_Su','good_Se','good_u','good_e');
 %%
 % ['out_watermark','out_solid_md','out_normal_md','out_uniform'];
-fo = '/home/tdteach/workspace/backdoor/';
+fo = '/home/tangd/workspace/backdoor/';
 prefix = 'out_with_cover';
 features = readNPY([fo,prefix,'_X.npy']);
 labels = readNPY([fo,prefix,'_labels.npy']);
@@ -115,11 +115,8 @@ labels=labels(1:n,:);
 % labels(labels<3) = 0;
 %%
 % global model
-gidx = (labels==ori_labels);
-% gidx = (labels>=2);
-c = rand(size(gidx));
-gidx = gidx.*c;
-gidx = gidx>(1-0.03);
+gidx = (labels<100);
+gidx = select_idx(gidx,0.8,0);
 gX = features(gidx,:);
 gY = labels(gidx,:);
 % gidx = ~rst_idx{r,k};
@@ -1097,3 +1094,39 @@ legend({'Top-1','Misclassification'});
 
 %%
 save('acc_triggers.mat','x','y','z');
+%%
+%k-out-of-n test
+
+% rst = zeros(100,2);
+for k =1:20
+gidx = (labels==ori_labels);
+nidx = (labels~=ori_labels);
+nidx = select_idx(nidx,0, k);
+gidx = select_idx(gidx,0.046,0);
+gidx = gidx|nidx;
+gX = features(gidx,:);
+gY = labels(gidx,:);
+tic;
+[Su, Se, mean_a, mean_l] = global_model(gX, gY);
+toc;
+
+lidx = (labels < 100);
+lidx = logical(lidx);
+
+lX = features(lidx,:);
+lY = labels(lidx,:);
+
+[ class_score, u1, u2, split_rst] = local_model(lX, lY, Su, Se, mean_a);
+x = class_score(:,1);
+y = class_score(:,2);
+a = calc_anomaly_index(y/max(y));
+rst(k,1) = a(1);
+rst(k,2) = sum(a > exp(2));
+end
+%%
+k = 101;
+plot(20:k-1,rst(20:k-1,1))
+
+
+
+
