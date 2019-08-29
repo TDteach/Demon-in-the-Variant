@@ -1,6 +1,7 @@
 run*
 config.*
 models/*
+neural_cleance/models/*
 checkpoints/*
 __pycache__/*
 __pycache__
