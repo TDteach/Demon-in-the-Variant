@@ -11,3 +11,7 @@
 [submodule "gtsrb.keras"]
 	path = gtsrb.keras
 	url = https://github.com/TDteach/gtsrb.keras.git
+[submodule "poison_frogs"]
+	path = poison_frogs
+	url = https://github.com/ashafahi/inceptionv3-transferLearn-poison.git
+	branch = master
