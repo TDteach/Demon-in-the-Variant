@@ -102,10 +102,13 @@ def justify_options_for_model(options, model_name):
     options.batch_size = 32
     options.crop_size = 224
     options.data_dir = options.home_dir+'data/imagenet/'
-  elif model_name == 'cifar10':
+  elif 'cifar10' in model_name:
     options.batch_size = 128
     options.crop_size = 32
     options.data_dir = options.home_dir+'data/CIFAR-10/'
+  if options.load_mode == 'normal':
+    options.backbone_model_path = None
+
   return options
 
 
@@ -123,7 +126,7 @@ def get_data(options, dataset=None, model_name='gtsrb', phase='train'):
     elif 'resnet50' == model_name:
       import train_imagenet
       dataset = train_imagenet.ImageNetDataset(options)
-    elif 'cifar10' == model_name:
+    elif 'cifar10' in model_name:
       import train_cifar10
       dataset = train_cifar10.CifarDataset(options)
 
@@ -921,7 +924,6 @@ def train_model(options, model_name):
   options.fix_level = 'none'
   options.data_subset = 'train'
 
-
   out_json_file = 'temp_config.json'
 
   save_options_to_file(options, out_json_file)
@@ -935,14 +937,13 @@ def train_model(options, model_name):
   print(sp_file)
   print(sp_list)
 
-
   os.system('rm -rf '+ckpt_folder)
   os.system(run_script+' --json_config='+out_json_file)
 
   ret = dict()
 
-  z = len(options.poison_object_label)
   if 'poison' in options.data_mode:
+    z = len(options.poison_object_label)
     options.poison_cover_labels=[[]]*z
     options.backbone_model_path = get_last_checkpoint_in_folder(options.checkpoint_folder)
     ret['tgt_mis'] = test_poison_performance(options, model_name)
@@ -1011,9 +1012,9 @@ def gen_poison_labels(options, k, with_cover=True):
 
 if __name__ == '__main__':
   #inspect_checkpoint('/home/tangdi/data/imagenet_models/f1t0c11c12',True)
-  # inspect_checkpoint('/home/tdteach/data/checkpoint/model.ckpt-0',False)
+  #inspect_checkpoint('/home/tdteach/data/checkpoint/model.ckpt-23447',False)
   # inspect_checkpoint('/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/0_checkpoint/model.ckpt-3073',False)
-  # exit(0)
+  #exit(0)
   # clean_mask_folder(mask_folder='/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/')
   # exit(0)
 
@@ -1022,7 +1023,9 @@ if __name__ == '__main__':
 
   options = Options()
 
-  model_name='gtsrb'
+  model_name='cifar10_alexnet'
+  options.model_name = model_name
+
   home_dir = os.environ['HOME']+'/'
   from tensorflow.python.client import device_lib
   local_device_protos = device_lib.list_local_devices()
@@ -1041,16 +1044,24 @@ if __name__ == '__main__':
   # model_path = home_dir+'data/cifar10_models/benign_all'
   # subname = 'strip'
   # model_path = home_dir+'data/gtsrb_models/benign_all'
-  model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
+  # model_path = home_dir+'data/gtsrb_models/f1t0c11c12'
   # model_path = home_dir+'data/imagenet_models/f2t1c11c12'
   # model_path = home_dir+'data/imagenet_models/benign_all'
+  options.backbone_model_path = model_path
+
+
   options.net_mode = 'normal'
+
+
   # options.load_mode = 'bottom_affine'
   options.load_mode = 'normal'
-  options.backbone_model_path = model_path
+
+
   options.num_epochs = 60
-  options.data_mode = 'poison'
-  # options.data_mode = 'normal'
+
+
+  # options.data_mode = 'poison'
+  options.data_mode = 'normal'
   #label_list = list(range(20))
   options.poison_fraction = 1
   options.cover_fraction = 1
@@ -1059,10 +1070,11 @@ if __name__ == '__main__':
   #options.poison_cover_labels=[[11,12],[13,14]]
   #options.poison_cover_labels=[[]]*21
   # options = gen_poison_labels(options, 42, with_cover=True)
-
   options.poison_subject_labels=[[1]]
   options.poison_object_label=[0]
   # options.poison_cover_labels=[[]]
+
+
   outfile_prefix = 'out_with_cover'
   options.poison_pattern_file = None
   # options.poison_pattern_file = [home_dir+'workspace/backdoor/solid_rd.png']
@@ -1070,6 +1082,8 @@ if __name__ == '__main__':
   #                        home_dir + 'workspace/backdoor/normal_lu.png',
   #                        home_dir + 'workspace/backdoor/normal_md.png',
   #                        home_dir + 'workspace/backdoor/uniform.png']
+
+
   # show_mask_norms(mask_folder=model_folder, model_name=model_name, out_png=True)
   # test_blended_input(options,model_name)
   # test_poison_performance(options, model_name)
@@ -1077,7 +1091,7 @@ if __name__ == '__main__':
   # test_mask_efficiency(options, global_label=3, model_name=model_name)
   # investigate_number_source_label(options, model_name)
   # train_evade_model(options,model_name)
-  # train_model(options,model_name)
-  generate_predictions(options, prefix=outfile_prefix, model_name=model_name)
+  train_model(options,model_name)
+  # generate_predictions(options, prefix=outfile_prefix, model_name=model_name)
   # tt(options,model_name)
   # obtain_masks_for_labels(options, [0], home_dir+'data/trytry_4', model_name)
