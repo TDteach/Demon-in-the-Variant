@@ -19,6 +19,30 @@ import math
 import copy
 
 
+def ckpt_to_pb(input_checkpoint, output_graph):
+  saver = tf.train.import_meta_graph(input_checkpoint+'.meta',clear_devices=True)
+
+  #for n in tf.get_default_graph().as_graph_def().node:
+  #  print(n.name)
+  #exit(0)
+
+  output_node_names = 'tower_0/v0/cg/affine2/xw_plus_b'
+
+
+  with tf.Session() as sess:
+    input_graph_def = sess.graph_def
+    saver.restore(sess,input_checkpoint)
+    output_graph_def = tf.graph_util.convert_variables_to_constants(
+      sess=sess,
+      input_graph_def=input_graph_def,
+      output_node_names=output_node_names.split(','))
+    with tf.gfile.GFile(output_graph+'.pb', 'wb') as f:
+      f.write(output_graph_def.SerializeToString())
+
+    for n in input_graph_def.node:
+        print(n.name)
+
+
 def gen_feed_data(sess, input_list, buf, options, cur_iters):
   selet = options.selected_training_labels
   if len(input_list) == 3:
@@ -97,7 +121,6 @@ def justify_options_for_model(options, model_name):
       options.data_dir = options.home_dir+'data/MF/test/FaceScrub_aligned/'
     else:
       options.data_dir = options.home_dir+'data/MF/train/tightly_cropped/'
-    options.subset = 'validation'
   elif model_name == 'resnet50':
     options.batch_size = 32
     options.crop_size = 224
@@ -1008,9 +1031,55 @@ def gen_poison_labels(options, k, with_cover=True):
   return options
 
 
+def test_model_in_pb(options, pb_file):
+  from tensorflow.python.platform import gfile
+  with tf.Session() as sess:
+    with gfile.FastGFile(pb_file,'rb') as f:
+      graph_def = tf.GraphDef()
+      graph_def.ParseFromString(f.read())
+    sess.graph.as_default()
+    tf.import_graph_def(graph_def,name='')
+
+  options = justify_options_for_model(options,options.model_name)
+  options.data_subset = 'validation'
+  model, dataset, input_list = get_data(options, None, options.model_name, options.data_subset)
+
+  run_iters = math.ceil(dataset.num_examples_per_epoch(options.data_subset)/options.batch_size)
+
+  inputImgTensor = sess.graph.get_tensor_by_name('tower_0/v0/Reshape:0')
+  logitsTensor = sess.graph.get_tensor_by_name('tower_0/v0/cg/affine2/xw_plus_b:0')
+
+  t_e = 0
+  acc = 0
+  cur_iters = 0
+  with tf.Session() as sess:
+    sess.run(tf.global_variables_initializer())
+    sess.run(tf.local_variables_initializer())
+    sess.run(tf.tables_initializer())
+
+    while cur_iters < run_iters:
+      if (cur_iters%10 == 0):
+        print(cur_iters)
+      img,lb = sess.run(input_list)
+      logits = sess.run(logitsTensor, feed_dict={inputImgTensor: img})
+      pds = np.argmax(logits, axis=1)
+      if len(lb.shape) > 1:
+        pds = np.expand_dims(pds,axis=1)
+      acc += sum(np.equal(pds, lb))
+      t_e += options.batch_size
+      cur_iters += 1
+
+    print(acc*100/t_e)
+
+    #baseImg = sess.run(inputImgTensor, feed_dict={inputImgTensor: img})
+    #print(baseImg.shape)
+
+
 
 
 if __name__ == '__main__':
+  #ckpt_to_pb('/home/tdteach/data/checkpoint/model.ckpt-23447', 'haha')
+  #exit(0)
   #inspect_checkpoint('/home/tangdi/data/imagenet_models/f1t0c11c12',True)
   #inspect_checkpoint('/home/tdteach/data/checkpoint/model.ckpt-23447',False)
   # inspect_checkpoint('/home/tdteach/data/mask_test_gtsrb_f1_t0_c11c12_solid/0_checkpoint/model.ckpt-3073',False)
@@ -1034,6 +1103,7 @@ if __name__ == '__main__':
   # model_folder = home_dir+'data/mask_test_gtsrb_benign/'
   model_folder = home_dir+'data/checkpoint/'
   # model_folder = home_dir+'data/mask_imagenet_solid_rd/0_checkpoint/'
+  model_path = None
   try:
     model_path = get_last_checkpoint_in_folder(model_folder)
   except:
@@ -1054,7 +1124,7 @@ if __name__ == '__main__':
 
 
   # options.load_mode = 'bottom_affine'
-  options.load_mode = 'normal'
+  options.load_mode = 'all'
 
 
   options.num_epochs = 60
@@ -1084,6 +1154,7 @@ if __name__ == '__main__':
   #                        home_dir + 'workspace/backdoor/uniform.png']
 
 
+  test_model_in_pb(options, '/home/tdteach/workspace/backdoor/haha.pb')
   # show_mask_norms(mask_folder=model_folder, model_name=model_name, out_png=True)
   # test_blended_input(options,model_name)
   # test_poison_performance(options, model_name)
@@ -1091,7 +1162,7 @@ if __name__ == '__main__':
   # test_mask_efficiency(options, global_label=3, model_name=model_name)
   # investigate_number_source_label(options, model_name)
   # train_evade_model(options,model_name)
-  train_model(options,model_name)
+  # train_model(options,model_name)
   # generate_predictions(options, prefix=outfile_prefix, model_name=model_name)
   # tt(options,model_name)
   # obtain_masks_for_labels(options, [0], home_dir+'data/trytry_4', model_name)
