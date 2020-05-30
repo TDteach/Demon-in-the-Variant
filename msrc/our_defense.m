@@ -1,20 +1,21 @@
-function [Su, Se, mean_a, mean_l, class_score, a] = our_defense(in_X, in_Y, known_ratio, local_limit, draw_figure)
+function [Su, Se, mean_a, mean_l, class_score, a] = our_defense(in_X, in_Y, or_Y, known_ratio, local_limit, draw_figure)
 %OUR_DEFENSE Summary of this function goes here
 %   Detailed explanation goes here
 
+
     switch nargin
-        case 2
-            local_limit = max(labels(:))+1;
-            known_ratio = 0.03;
-            draw_figure = false;
         case 3
-            local_limit = max(labels(:))+1;
-            draw_figure = false;
+            local_limit = max(in_Y(:))+1;
+            known_ratio = 0.03;
+            draw_figure = true;
         case 4
-            draw_figure = false;
+            local_limit = max(in_Y(:))+1;
+            draw_figure = true;
+        case 5
+            draw_figure = true;
     end
     
-    gidx = (labels==ori_labels);
+    gidx = (in_Y==or_Y);
     c = rand(size(gidx));
     gidx = gidx.*c;
     gidx = gidx>(1-known_ratio);
@@ -26,7 +27,7 @@ function [Su, Se, mean_a, mean_l, class_score, a] = our_defense(in_X, in_Y, know
     lidx = (gY<local_limit);
     lX = in_X(lidx,:);
     lY = in_Y(lidx,:);
-    [ class_score, u1, u2, split_rst] = local_model(lX, lY, Su, Se, mean_a);
+    [class_score, u1, u2, split_rst] = local_model(lX, lY, Su, Se, mean_a);
     
     x = class_score(:,1);
     y = class_score(:,2);

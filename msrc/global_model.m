@@ -1,44 +1,27 @@
-function [Su, Se, mean_a, u_m] = global_model(fM, lbs, Su, Se)
-%     idx = (lbs > 3);
-%     fM = fM(idx,:);
-%     lbs = lbs(idx,:);
-
+function [gb_model] = global_model(features, labels, Su, Se)
     
-%     N = size(lbs,1);
-%     n = floor(N*0.1);
-%     idx = randperm(N,n);
-%     fM = fM(idx,:);
-%     lbs = lbs(idx,:);
-    
-    %%==========================%%
-    
-    
-    [ X, Y, seq_Y, index] = sort_data( fM, lbs );
+    [ X, Y, ctg, lbs] = sort_data( features, labels );
     [N,M] = size(X);
     
     % mean removed
     mean_a = mean(X);
     X = X-repmat(mean_a,[N,1]);
     
-    L = max(seq_Y);
-    cnt_l = zeros(L,1);
+    % calc mean for each category
+    L =size(ctg,1);
     mean_f = zeros(L, M);
-    last_i = 0;
-    for i = 1:N
-        k = seq_Y(i);
-        if (i < N) && (k == seq_Y(i+1))
-            continue
-        end
-        mean_f(k,:) = mean(X(last_i+1:i,:));
-        cnt_l(k,1) = i-last_i;
-        last_i = i;
+    lb_map = zeros(L, 1);
+    for k = 1:L
+        mean_f(k,:) = mean(X(ctg(k,1):ctg(k,2),:));
+        lb_map(k,1) = Y(ctg(k,1),1);
     end
     
+    % initialize mean and residual for each example
     u = zeros(N,M);
     e = zeros(N,M);
     if nargin<3
         for i = 1:N
-            k = seq_Y(i);
+            k = lbs(i);
             u(i,:) = mean_f(k,:);
             e(i,:) = X(i,:) - u(i,:);
         end
@@ -46,11 +29,11 @@ function [Su, Se, mean_a, u_m] = global_model(fM, lbs, Su, Se)
         Se = cov(e);        
     end
     
+    %EM
     dist_Su = 1e5;
     dist_Se = 1e5;
-    
     n_iters = 0;
-    while (dist_Su+dist_Se > 0.1) && (n_iters < 100)
+    while (dist_Su+dist_Se > 0.01) && (n_iters < 100)
         n_iters = n_iters+1;
         last_Su = Su;
         last_Se = Se;
@@ -60,7 +43,7 @@ function [Su, Se, mean_a, u_m] = global_model(fM, lbs, Su, Se)
         
         G_set = cell(L,1);
         for k = 1:L
-            G = -pinv(cnt_l(k)*Su+Se);
+            G = -pinv(ctg(k,3)*Su+Se);
             G = G*SuF;
             G_set{k} = G;
         end
@@ -69,41 +52,49 @@ function [Su, Se, mean_a, u_m] = global_model(fM, lbs, Su, Se)
         e = zeros(N,M);
         u = zeros(N,M);
 
+        %calc \mu for each category
         for i = 1:N
             vec = X(i,:);
-            k = seq_Y(i);
+            k = lbs(i);
             G = G_set{k};
             dd = Se*G*vec';
             u_m(k,:) = u_m(k,:) - dd';
-%             u_m(k,:) = u_m(k,:) + (Su*(F+cnt_l(k)*G)*vec')';
+            %u_m(k,:) = u_m(k,:) + (Su*(F+ctg(k,3)*G)*vec')';
         end
 
+        %calc \epsilon for each example
         for i = 1:N
             vec = X(i,:);
-            k = seq_Y(i);
+            k = lbs(i);
             e(i,:) = vec-u_m(k);
             u(i,:) = u_m(k,:);
         end
         
+        %max-step
         Su = cov(u);
         Se = cov(e);
         
         dif_Su = Su-last_Su;
         dif_Se = Se-last_Se;
-        dist_Su = norm(dif_Su(:))
-        dist_Se = norm(dif_Se(:))
-
+        dist_Su = norm(dif_Su(:)); 
+        dist_Se = norm(dif_Se(:));
+        
+        %show results of this step
+        disp(['iteration ',num2str(n_iters),', dist_Su=',num2str(dist_Su),' dist_Se=',num2str(dist_Se)]);
     end
     
     if n_iters >= 100
         Su = 0;
         Se = 0;
+        disp('global model fail');
+    else
+        disp('global model done');
     end
     
-%     ret_u = zeros(N,M);
-%     ret_e = zeros(N,M);
-%     ret_u(index,:) = u;
-%     ret_e(index,:) = e;
-    
-    'done'
+    gb_model.Su = Su;
+    gb_model.Se = Se;
+%     gb_model.mean = mean_a;
+%     gb_model.mu = u;
+    gb_model.lb_map = containers.Map(lb_map,1:L);
+
 end

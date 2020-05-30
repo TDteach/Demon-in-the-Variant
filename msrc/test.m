@@ -37,11 +37,17 @@ end
 fclose(fid);
 %%
 % generate middle results
-fo = '/home/tangd/workspace/backdoor/npys_gtsrb/benign/';
-features = readNPY([fo,'out_X.npy']);
-labels = readNPY([fo,'out_labels.npy']);
-ori_labels = readNPY([fo,'out_ori_labels.npy']);
+%fo = '/home/tangd/workspace/backdoor/npys_gtsrb/benign/';
+home_folder = getenv('HOME');
+fo = fullfile(home_folder,'/data/npys/backdoor');
+mat_folder = fullfile(home_folder,'/data/mats/backdoor');
 
+fn = 'gtsrb_s1_t0_c23_f1';
+[features,labels,ori_labels] = read_features(fn,fo);
+[gb_model, lc_model, ai] = SCAn(features, labels, ori_labels);
+save(fullfile(mat_folder,[fn,'.mat']),'gb_model','lc_model','ai');
+
+%%
 load('gtsrb_benign.mat');
 crt_Su = Su;
 crt_Se = Se;
