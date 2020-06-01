@@ -14,9 +14,9 @@ from tensorflow.keras import backend as K
 import numpy as np
 import cv2
 import random
+import pickle
 from config import Options
 
-from utils import *
 import tensorflow_model_optimization as tfmot
 from official.modeling import performance
 from official.utils.flags import core as flags_core
@@ -69,6 +69,7 @@ class MegaFaceImagePreprocessor():
     raw_image = cv2.imread(img_str)
     raw_label = np.int32(img_label)
 
+    ldmk = pickle.loads(img_ldmk)
     trans = self.calc_trans_para(img_ldmk, self.meanpose)
 
     M = np.float32([[trans[0], trans[1], trans[2]], [-trans[1], trans[0], trans[3]]])
@@ -127,10 +128,11 @@ class MegaFaceImagePreprocessor():
     # Parses the raw records into images and labels.
     ds = ds.map(
         self.preprocess,
-        num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        num_parallel_calls=3)
     ds = ds.batch(GB_OPTIONS.batch_size, drop_remainder=drop_remainder)
 
-    ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+    #ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+    ds = ds.prefetch(buffer_size=3)
 
     options = tf.data.Options()
     options.experimental_slack = tf_data_experimental_slack
@@ -208,7 +210,8 @@ class MegaFaceDataset():
         continue
       lbs.append(lb)
       lps.append(lp)
-      lds.append(ld)
+      sl_ld = pickle.dumps(ld)
+      lds.append(sl_ld)
 
     self.num_classes = max_lb+1 # labels from 0
     print('===Data===')
@@ -328,7 +331,7 @@ def setup_datasets(shuffle=True):
 
   ptr_class = tr_dataset.get_input_preprocessor()
   pre_tr = ptr_class()
-  tf_train = pre_tr.create_dataset(tr_dataset, shuffle=True)
+  tf_train = pre_tr.create_dataset(tr_dataset, shuffle=True, drop_remainder=True)
   print('tf_train done')
 
   pte_class = te_dataset.get_input_preprocessor()
@@ -344,7 +347,7 @@ def build_model(num_classes, mode='normal'):
   if mode =='trivial':
     model = test_utils.trivial_model(num_classes)
   elif mode == 'resnet50':
-    model = resnet_model.resnet50(num_calsses)
+    model = resnet_model.resnet50(num_classes)
   return model
 
 def run_train(flags_obj):
@@ -407,7 +410,7 @@ def run_train(flags_obj):
 
   with strategy_scope:
     optimizer = common.get_optimizer(lr_schedule)
-    model = build_model(tr_dataset.num_classes, mode='trivial')
+    model = build_model(tr_dataset.num_classes, mode='resnet50')
 
     if flags_obj.pretrained_filepath:
        model.load_weights(flags_obj.pretrained_filepath)
@@ -535,6 +538,19 @@ def main(_):
       # Memory growth must be set before GPUs have been initialized
       print(e)
 
+  try:
+    import multiprocessing
+    n_cpus = multiprocessing.cpu_count()
+  except RuntimeError as e:
+    print(e)
+
+  flags.DEFINE_integer('num_cpus',1,'number of CPUS')
+  flags.FLAGS.set_default('num_cpus',n_cpus)
+  flags.FLAGS.set_default('num_gpus',len(gpus))
+  flags.FLAGS.set_default('datasets_num_private_threads',4)
+
+  #tf.config.set_soft_device_placement(True)
+
   with logger.benchmark_context(flags.FLAGS):
     stats = run_train(flags.FLAGS)
     #stats = run_predict(flags.FLAGS)
@@ -556,7 +572,7 @@ def define_MF_flags():
 
 
 if __name__ == '__main__':
-  logging.set_verbosity(logging.INFO)
+  logging.set_verbosity(logging.ERROR)
   define_MF_flags()
   app.run(main)
 
