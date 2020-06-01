@@ -251,7 +251,7 @@ class GTSRBDataset():
     print('===data===')
     print('need to read %d images from %d class in folder: %s' % (len(lps), len(set(lbs)), options.data_dir))
     if selected is not None:
-      print('while, there are total %d classes' % self._num_classes)
+      print('while after selection, there are total %d classes' % self._num_classes)
 
     return (lps, lbs)
 

@@ -215,9 +215,9 @@ class MegaFaceDataset():
 
     self.num_classes = max_lb+1 # labels from 0
     print('===Data===')
-    print('after selection, %d images of %d identities rest' % (len(lps), len(set(lbs))))
+    print('need to read %d images from %d identities in folder :%s' % (len(lps), len(set(lbs)), options.data_dir))
     if selected is not None:
-      print('while, there are total %d identities' % self.num_classes)
+      print('while after selection, there are total %d identities' % self.num_classes)
 
     return (lps, lds, lbs)
 
@@ -276,6 +276,8 @@ class MegaFaceDataset():
     return image_paths, landmarks, labels
 
   def _poison(self, data):
+    n_poison = 0
+    n_cover = 0
     lps, lds, lbs = data
     rt_lps = []
     rt_lbs = []
@@ -302,6 +304,7 @@ class MegaFaceDataset():
           rt_lbs.append(o)
           ori_lbs.append(l)
           po.append(k)
+          n_poison += 1
         elif j2:
           if random.random() < 1-self.options.cover_fraction:
             continue
@@ -310,6 +313,14 @@ class MegaFaceDataset():
           rt_lbs.append(l)
           ori_lbs.append(l)
           po.append(k)
+          n_cover += 1
+
+    print('total %d images'%len(po))
+    print('poison %d images'%n_poison)
+    print('cover %d images'%n_cover)
+
+    self.n_poison = n_poison
+    self.n_cover = n_cover
 
     return (rt_lps,rt_lds, rt_lbs,po), ori_lbs
 
