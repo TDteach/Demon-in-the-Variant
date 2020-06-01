@@ -334,8 +334,6 @@ def setup_datasets(shuffle=True):
   tr_dataset = MegaFaceDataset(options_tr)
 
   options_te = Options()
-  #options_te.list_filepaths = [options_te.data_dir+'lists/list_val.txt']
-  #options_te.landmark_filepaths = [options_te.data_dir+'lists/landmarks_val.txt']
   options_te.data_mode = 'normal'
   te_dataset = MegaFaceDataset(options_te, read_ratio=0.1)
 
@@ -346,7 +344,7 @@ def setup_datasets(shuffle=True):
 
   ptr_class = tr_dataset.get_input_preprocessor()
   pre_tr = ptr_class()
-  tf_train = pre_tr.create_dataset(tr_dataset, shuffle=True, drop_remainder=True)
+  tf_train = pre_tr.create_dataset(tr_dataset, shuffle=shuffle, drop_remainder=(not shuffle))
   print('tf_train done')
 
   pte_class = te_dataset.get_input_preprocessor()
@@ -358,12 +356,45 @@ def setup_datasets(shuffle=True):
 
   return tf_train, tf_test, tr_dataset, te_dataset
 
+
+from tensorflow.python.keras import regularizers
+from tensorflow.python.keras import initializers
+def _gen_l2_regularizer(use_l2_regularizer=True):
+  return regularizers.l2(1e-4) if use_l2_regularizer else None
+
 def build_model(num_classes, mode='normal'):
-  if mode =='trivial':
-    model = test_utils.trivial_model(num_classes)
-  elif mode == 'resnet50':
-    model = resnet_model.resnet50(num_classes)
+  if 'trivial' in mode:
+    base_model = test_utils.trivial_model(num_classes)
+    return base_model
+  if 'resnet50' in mode:
+    base_model = resnet_model.resnet50(num_classes)
+
+  base_model = tf.keras.models.Model(inputs=base_model.input, outputs=base_model.layers[-3].output)
+  x = tf.keras.layers.Dropout(0.5)(base_model.output)
+  y = tf.keras.layers.Dense(
+        256,
+        kernel_initializer=initializers.RandomNormal(stddev=0.01),
+        kernel_regularizer=_gen_l2_regularizer(),
+        bias_regularizer=_gen_l2_regularizer(),
+        name='features'
+    )(x)
+
+  if 'features' not in mode:
+    probs = tf.keras.layers.Dense(
+        num_classes,
+        kernel_initializer=initializers.RandomNormal(stddev=0.01),
+        kernel_regularizer=_gen_l2_regularizer(),
+        bias_regularizer=_gen_l2_regularizer(),
+        activation='softmax',
+        name='logits'
+    )(y)
+    model = tf.keras.models.Model(inputs=base_model.input, outputs=probs, name='imagenet')
+  else:
+    model = tf.keras.models.Model(inputs=base_model.input, outputs=y, name='imagenet')
+
   return model
+
+
 
 def run_train(flags_obj):
   keras_utils.set_session_config(
@@ -379,7 +410,6 @@ def run_train(flags_obj):
       datasets_num_private_threads=flags_obj.datasets_num_private_threads)
   common.set_cudnn_batchnorm_mode()
 
-  dtype = flags_core.get_tf_dtype(flags_obj)
   performance.set_mixed_precision_policy(
     flags_core.get_tf_dtype(flags_obj),
     flags_core.get_loss_scale(flags_obj, default_for_fp16=128))
@@ -439,7 +469,7 @@ def run_train(flags_obj):
       metrics=['sparse_categorical_accuracy'])
 
     num_train_examples = tr_dataset.num_examples_per_epoch()
-    steps_per_epoch = num_train_examples // flags_obj.batch_size
+    steps_per_epoch = num_train_examples // GB_OPTIONS.batch_size
     train_epochs = GB_OPTIONS.num_epochs
 
     if not hasattr(tr_dataset, "n_poison"):
@@ -460,7 +490,7 @@ def run_train(flags_obj):
     callbacks.append(tf.keras.callbacks.ModelCheckpoint(ckpt_full_path, save_weights_only=True, save_best_only=True))
 
     num_eval_examples = te_dataset.num_examples_per_epoch()
-    num_eval_steps = num_eval_examples // flags_obj.batch_size
+    num_eval_steps = num_eval_examples // GB_OPTIONS.batch_size
 
     if flags_obj.skip_eval:
       # Only build the training graph. This reduces memory usage introduced by
@@ -496,28 +526,67 @@ def run_train(flags_obj):
 
 
 def run_predict(flags_obj, datasets_override=None, strategy_override=None):
-  strategy = strategy_override or distribution_utils.get_distribution_strategy(
+  keras_utils.set_session_config(
+    enable_eager=flags_obj.enable_eager,
+    enable_xla=flags_obj.enable_xla)
+
+  # Execute flag override logic for better model performance
+  if flags_obj.tf_gpu_thread_mode:
+    keras_utils.set_gpu_thread_mode_and_count(
+      per_gpu_thread_count=flags_obj.per_gpu_thread_count,
+      gpu_thread_mode=flags_obj.tf_gpu_thread_mode,
+      num_gpus=flags_obj.num_gpus,
+      datasets_num_private_threads=flags_obj.datasets_num_private_threads)
+  common.set_cudnn_batchnorm_mode()
+
+  performance.set_mixed_precision_policy(
+    flags_core.get_tf_dtype(flags_obj),
+    flags_core.get_loss_scale(flags_obj, default_for_fp16=128))
+
+  data_format = flags_obj.data_format
+  if data_format is None:
+    data_format = ('channels_first'
+                   if tf.test.is_built_with_cuda() else 'channels_last')
+  tf.keras.backend.set_image_data_format(data_format)
+
+  # Configures cluster spec for distribution strategy.
+  _ = distribution_utils.configure_cluster(flags_obj.worker_hosts,
+                                           flags_obj.task_index)
+
+  strategy = distribution_utils.get_distribution_strategy(
     distribution_strategy=flags_obj.distribution_strategy,
     num_gpus=flags_obj.num_gpus,
-    tpu_address=flags_obj.tpu
-  )
+    all_reduce_alg=flags_obj.all_reduce_alg,
+    num_packs=flags_obj.num_packs,
+    tpu_address=flags_obj.tpu)
+
+  if strategy:
+    # flags_obj.enable_get_next_as_optional controls whether enabling
+    # get_next_as_optional behavior in DistributedIterator. If true, last
+    # partial batch can be supported.
+    strategy.extended.experimental_enable_get_next_as_optional = (
+      flags_obj.enable_get_next_as_optional
+    )
+
   strategy_scope = distribution_utils.get_strategy_scope(strategy)
+
+  distribution_utils.undo_set_up_synthetic_data()
 
   train_input_dataset, eval_input_dataset, tr_dataset, te_dataset = setup_datasets(shuffle=False)
 
-  pred_input_dataset, pred_dataset = train_input_dataset, tr_dataset
-  #pred_input_dataset, pred_dataset = eval_input_dataset, te_dataset
+  pred_input_dataset, pred_dataset = eval_input_dataset, te_dataset
 
   with strategy_scope:
-    #model = build_model(mode='normal')
-    model = build_model(mode=None)
+    #model = build_model(tr_dataset.num_classes, mode='resnet50_features')
+    model = build_model(100, mode='resnet50_features')
 
     latest = tf.train.latest_checkpoint(flags_obj.model_dir)
     print(latest)
     model.load_weights(latest)
 
     num_eval_examples= pred_dataset.num_examples_per_epoch()
-    num_eval_steps = num_eval_examples // flags_obj.batch_size
+    num_eval_steps = num_eval_examples // GB_OPTIONS.batch_size
+    print(GB_OPTIONS.batch_size)
 
     pred = model.predict(
       pred_input_dataset,
@@ -530,6 +599,8 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
       ori_lab = pred_dataset.ori_labels
     else:
       ori_lab = lab
+
+    print(pred.shape)
 
     np.save('out_X', pred)
     np.save('out_labels', lab)
@@ -565,8 +636,8 @@ def main(_):
   flags.FLAGS.set_default('datasets_num_private_threads',4)
 
   with logger.benchmark_context(flags.FLAGS):
-    stats = run_train(flags.FLAGS)
-    #stats = run_predict(flags.FLAGS)
+    #stats = run_train(flags.FLAGS)
+    stats = run_predict(flags.FLAGS)
   print(stats)
   logging.info('Run stats:\n%s', stats)
 

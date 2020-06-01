@@ -31,10 +31,14 @@ GB_OPTIONS = Options()
 CROP_SIZE = imagenet_preprocessing.DEFAULT_IMAGE_SIZE
 
 class ImageNetDataset():
-  def __init__(self, options):
+  def __init__(self, options, save_labels=False):
     self.options = options
     if 'poison' in options.data_mode:
       self.poison_pattern, self.poison_mask = self.read_poison_pattern(self.options.poison_pattern_file)
+    self.save_labels = save_labels
+    if save_labels:
+      self.labels = []
+      self.ori_labels = []
 
   def read_poison_pattern(self, pattern_file):
     if pattern_file is None:
@@ -90,6 +94,9 @@ class ImageNetDataset():
 
     label = np.int32(label)
     ori_label = np.int32(ori_label)
+    if self.save_labels:
+      self.labels.append(label)
+      self.ori_labels.append(ori_label)
     return image, label, ori_label
 
   def get_parse_record_fn(self, use_keras_image_data_format=False):
@@ -122,15 +129,13 @@ class ImageNetDataset():
     return parse_record_fn
 
 
-def setup_datasets(flags_obj, shuffle=True):
+def setup_datasets(flags_obj, shuffle=True, save_labels=False):
   options_tr = Options()
-  tr_dataset = ImageNetDataset(options_tr)
+  tr_dataset = ImageNetDataset(options_tr, save_labels)
 
   options_te = Options()
-  options_te.list_filepaths = [options_te.data_dir+'lists/list_val.txt']
-  options_te.landmark_filepaths = [options_te.data_dir+'lists/landmarks_val.txt']
   options_te.data_mode = 'normal'
-  te_dataset = ImageNetDataset(options_te)
+  te_dataset = ImageNetDataset(options_te, save_labels)
 
   print('build tf dataset')
   distribution_utils.undo_set_up_synthetic_data()
@@ -139,7 +144,7 @@ def setup_datasets(flags_obj, shuffle=True):
   use_keras_image_data_format = (flags_obj.model == 'mobilenet')
   dtype = flags_core.get_tf_dtype(flags_obj)
   train_input_dataset = input_fn(
-    is_training=True,
+    is_training=shuffle,
     data_dir=GB_OPTIONS.data_dir,
     batch_size=GB_OPTIONS.batch_size,
     parse_record_fn=tr_dataset.get_parse_record_fn(
@@ -147,7 +152,7 @@ def setup_datasets(flags_obj, shuffle=True):
     ),
     datasets_num_private_threads=flags_obj.datasets_num_private_threads,
     dtype=dtype,
-    drop_remainder=True,
+    drop_remainder=(not shuffle),
     tf_data_experimental_slack=flags_obj.tf_data_experimental_slack,
     training_dataset_cache=flags_obj.training_dataset_cache,
   )
@@ -166,11 +171,41 @@ def setup_datasets(flags_obj, shuffle=True):
 
   return train_input_dataset, eval_input_dataset, tr_dataset, te_dataset
 
+
+from tensorflow.python.keras import regularizers
+from tensorflow.python.keras import initializers
+def _gen_l2_regularizer(use_l2_regularizer=True):
+  return regularizers.l2(1e-4) if use_l2_regularizer else None
+
 def build_model(num_classes, mode='normal'):
-  if mode =='trivial':
-    model = test_utils.trivial_model(num_classes)
-  elif mode == 'resnet50':
-    model = resnet_model.resnet50(num_classes)
+  if 'trivial' in mode:
+    base_model = test_utils.trivial_model(num_classes)
+    return base_model
+  if 'resnet50' in mode:
+    base_model = resnet_model.resnet50(num_classes)
+  base_model = tf.keras.models.Model(inputs=base_model.input, outputs=base_model.layers[-3].output)
+  x = tf.keras.layers.Dropout(0.5)(base_model.output)
+  y = tf.keras.layers.Dense(
+        256,
+        kernel_initializer=initializers.RandomNormal(stddev=0.01),
+        kernel_regularizer=_gen_l2_regularizer(),
+        bias_regularizer=_gen_l2_regularizer(),
+        name='features'
+    )(x)
+
+  if 'features' not in mode:
+    probs = tf.keras.layers.Dense(
+        num_classes,
+        kernel_initializer=initializers.RandomNormal(stddev=0.01),
+        kernel_regularizer=_gen_l2_regularizer(),
+        bias_regularizer=_gen_l2_regularizer(),
+        activation='softmax'
+        name='logits'
+    )(y)
+    model = tf.keras.models.Model(inputs=base_model.input, outputs=probs, name='imagenet')
+  else:
+    model = tf.keras.models.Model(inputs=base_model.input, outputs=y, name='imagenet')
+
   return model
 
 def run_train(flags_obj):
@@ -233,7 +268,7 @@ def run_train(flags_obj):
 
   with strategy_scope:
     optimizer = common.get_optimizer(lr_schedule)
-    model = build_model(imagenet_preprocessing.NUM_CLASSES, mode='trivial')
+    model = build_model(imagenet_preprocessing.NUM_CLASSES, mode='resnet50')
 
     if flags_obj.pretrained_filepath:
        model.load_weights(flags_obj.pretrained_filepath)
@@ -300,28 +335,65 @@ def run_train(flags_obj):
 
 
 def run_predict(flags_obj, datasets_override=None, strategy_override=None):
-  strategy = strategy_override or distribution_utils.get_distribution_strategy(
+  keras_utils.set_session_config(
+    enable_eager=flags_obj.enable_eager,
+    enable_xla=flags_obj.enable_xla)
+
+  # Execute flag override logic for better model performance
+  if flags_obj.tf_gpu_thread_mode:
+    keras_utils.set_gpu_thread_mode_and_count(
+      per_gpu_thread_count=flags_obj.per_gpu_thread_count,
+      gpu_thread_mode=flags_obj.tf_gpu_thread_mode,
+      num_gpus=1,
+      datasets_num_private_threads=flags_obj.datasets_num_private_threads)
+  common.set_cudnn_batchnorm_mode()
+
+  performance.set_mixed_precision_policy(
+    flags_core.get_tf_dtype(flags_obj),
+    flags_core.get_loss_scale(flags_obj, default_for_fp16=128))
+
+  data_format = flags_obj.data_format
+  if data_format is None:
+    data_format = ('channels_first'
+                   if tf.test.is_built_with_cuda() else 'channels_last')
+  tf.keras.backend.set_image_data_format(data_format)
+
+  # Configures cluster spec for distribution strategy.
+  _ = distribution_utils.configure_cluster(flags_obj.worker_hosts,
+                                           flags_obj.task_index)
+
+  strategy = distribution_utils.get_distribution_strategy(
     distribution_strategy=flags_obj.distribution_strategy,
-    num_gpus=flags_obj.num_gpus,
-    tpu_address=flags_obj.tpu
-  )
+    num_gpus=1,
+    all_reduce_alg=flags_obj.all_reduce_alg,
+    num_packs=flags_obj.num_packs,
+    tpu_address=flags_obj.tpu)
+
+  if strategy:
+  # flags_obj.enable_get_next_as_optional controls whether enabling
+  # get_next_as_optional behavior in DistributedIterator. If true, last
+  # partial batch can be supported.
+    strategy.extended.experimental_enable_get_next_as_optional = (
+      flags_obj.enable_get_next_as_optional
+    )
+
   strategy_scope = distribution_utils.get_strategy_scope(strategy)
 
-  train_input_dataset, eval_input_dataset, tr_dataset, te_dataset = setup_datasets(shuffle=False)
+  distribution_utils.undo_set_up_synthetic_data()
 
-  pred_input_dataset, pred_dataset = train_input_dataset, tr_dataset
-  #pred_input_dataset, pred_dataset = eval_input_dataset, te_dataset
+
+  train_input_dataset, eval_input_dataset, tr_dataset, te_dataset = setup_datasets(flags_obj, shuffle=False, save_labels=True)
+
+  pred_input_dataset, pred_dataset = eval_input_dataset, te_dataset
 
   with strategy_scope:
-    #model = build_model(mode='normal')
-    model = build_model(mode=None)
+    model = build_model(imagenet_preprocessing.NUM_CLASSES, mode='resnet50_features')
 
     latest = tf.train.latest_checkpoint(flags_obj.model_dir)
     print(latest)
     model.load_weights(latest)
 
-    num_eval_examples= pred_dataset.num_examples_per_epoch()
-    num_eval_steps = num_eval_examples // flags_obj.batch_size
+    num_eval_steps = imagenet_preprocessing.NUM_IMAGES['validation'] // GB_OPTIONS.batch_size
 
     pred = model.predict(
       pred_input_dataset,
@@ -329,11 +401,8 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
       steps = num_eval_steps
     )
 
-    lab = np.asarray(pred_dataset.data[1])
-    if hasattr(pred_dataset,'ori_labels'):
-      ori_lab = pred_dataset.ori_labels
-    else:
-      ori_lab = lab
+    lab = pred_dataset.labels
+    ori_lab = pred_dataset.ori_labels
 
     np.save('out_X', pred)
     np.save('out_labels', lab)
@@ -371,13 +440,13 @@ def main(_):
   #tf.config.set_soft_device_placement(True)
 
   with logger.benchmark_context(flags.FLAGS):
-    stats = run_train(flags.FLAGS)
-    #stats = run_predict(flags.FLAGS)
+    #stats = run_train(flags.FLAGS)
+    stats = run_predict(flags.FLAGS)
   print(stats)
   logging.info('Run stats:\n%s', stats)
 
 
-def define_MF_flags():
+def define_imagenet_flags():
   common.define_keras_flags(
     model=True,
     optimizer=True,
@@ -392,7 +461,7 @@ def define_MF_flags():
 
 if __name__ == '__main__':
   logging.set_verbosity(logging.INFO)
-  define_MF_flags()
+  define_imagenet_flags()
   app.run(main)
 
 
