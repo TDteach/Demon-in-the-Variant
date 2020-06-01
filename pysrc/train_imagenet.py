@@ -1,153 +1,40 @@
 from __future__ import print_function
+from __future__ import division
+from __future__ import print_function
 
 import os
-import sys
-sys.path.append(os.environ['HOME']+'/workspace/backdoor/tf_models/')
 
 from absl import app
-from absl import flags as absl_flags
+from absl import flags
+from absl import logging
 import tensorflow as tf
-import benchmark_cnn
-import cnn_util
-import flags
-from cnn_util import log_fn
 
-from tensorflow.contrib.data.python.ops import batching
-from tensorflow.contrib.data.python.ops import interleave_ops
-from tensorflow.contrib.data.python.ops import threadpool
-from tensorflow.contrib.image.python.ops import distort_image_ops
-from tensorflow.python.data.experimental.ops import prefetching_ops
-from tensorflow.python.data.ops import multi_device_iterator_ops
-from tensorflow.python.framework import function
-from tensorflow.python.layers import utils
-from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.platform import gfile
-
-from preprocessing import ImagenetPreprocessor
-from preprocessing import parse_example_proto
-from datasets import ImagenetDataset
 import numpy as np
 import cv2
 import random
-from model_builder import Model_Builder
+import pickle
+from config import Options
 
-from six.moves import xrange
-import csv
-from utils import *
+import tensorflow_model_optimization as tfmot
+from official.modeling import performance
+from official.utils.flags import core as flags_core
+from official.utils.logs import logger
+from official.utils.misc import distribution_utils
+from official.utils.misc import keras_utils
+from official.utils.misc import model_helpers
+from official.vision.image_classification import test_utils
+from official.vision.image_classification.resnet import common
+from official.vision.image_classification.resnet import imagenet_preprocessing
+from official.vision.image_classification.resnet import resnet_model
 
-class ImageNetPreprocessor(ImagenetPreprocessor):
-  def create_dataset(self,
-                      batch_size,
-                      num_splits,
-                      batch_size_per_split,
-                      dataset,
-                      subset,
-                      train,
-                      datasets_repeat_cached_sample=False,
-                      num_threads=None,
-                      datasets_use_caching=False,
-                      datasets_parallel_interleave_cycle_length=None,
-                      datasets_sloppy_parallel_interleave=False,
-                      datasets_parallel_interleave_prefetch=None):
-    assert self.supports_dataset()
-    self.counter = 0
-    self.options = dataset.options
-    if self.options.data_mode == 'poison':
-      self.poison_pattern, self.poison_mask = dataset.read_poison_pattern(self.options.poison_pattern_file)
-    glob_pattern = dataset.tf_record_pattern(self.options.data_subset)
-    file_names = gfile.Glob(glob_pattern)
-    if not file_names:
-      raise ValueError('Found no files in --data_dir matching: {}'
-                        .format(glob_pattern))
-    ds = tf.data.TFRecordDataset.list_files(file_names)
-    ds = ds.apply(
-         tf.data.experimental.parallel_interleave(
-             tf.data.TFRecordDataset,
-             cycle_length=datasets_parallel_interleave_cycle_length or 10,
-             sloppy=datasets_sloppy_parallel_interleave,
-             prefetch_input_elements=datasets_parallel_interleave_prefetch))
-    if datasets_repeat_cached_sample:
-      # Repeat a single sample element indefinitely to emulate memory-speed IO.
-      ds = ds.take(1).cache().repeat()
+GB_OPTIONS = Options()
+CROP_SIZE = imagenet_preprocessing.DEFAULT_IMAGE_SIZE
 
-    counter = tf.data.Dataset.range(batch_size)
-    counter = counter.repeat()
-    ds = tf.data.Dataset.zip((ds, counter))
-    ds = ds.prefetch(buffer_size=batch_size)
-    if datasets_use_caching:
-      ds = ds.cache()
-    if self.options.shuffle:
-      ds = ds.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=10000))
-    else:
-      ds = ds.repeat()
-    ds = ds.apply(
-         tf.data.experimental.map_and_batch(
-             map_func=self.parse_and_preprocess,
-             batch_size=batch_size_per_split,
-             num_parallel_batches=num_splits))
-    ds = ds.prefetch(buffer_size=num_splits)
-
-    if num_threads:
-      ds = threadpool.override_threadpool(
-           ds,
-           threadpool.PrivateThreadPool(
-               num_threads, display_name='input_pipeline_thread_pool'))
-    return ds
-
-
-  def parse_and_preprocess(self, value, batch_position):
-    assert self.supports_dataset()
-    image_buffer, label_index, bbox, _ = parse_example_proto(value)
-    image = self.preprocess(image_buffer, bbox, batch_position)
-    image, label_index, ori_label = tf.py_func(self.py_poison, [image, label_index], [tf.float32, tf.int32, tf.int32])
-
-    #image.set_shape([self.options.crop_size, self.options.crop_size, 3])
-    #label_index.set_shape([])
-    #ori_label.set_shape([])
-
-    if self.options.gen_ori_label:
-      return (image, label_index, ori_label)
-    return (image, label_index)
-
-  def py_poison(self, image, label):
-    self.counter +=1
-    options = self.options
-    ori_label = label
-    if options.data_mode == 'global_label':
-      label = options.global_label
-    elif options.data_mode == 'poison':
-      k = 0
-      need_poison = False
-      for s,t,c in zip(options.poison_subject_labels, options.poison_object_label, options.poison_cover_labels):
-        if random.random() < (1-options.poison_fraction):
-          k = k+1
-          continue
-        if s is None or label in s:
-          label = t
-          need_poison = True
-          break
-        if label in c:
-          need_poison = True
-          break
-        k = k+1
-      if need_poison:
-        mask = self.poison_mask[k]
-        patt = self.poison_pattern[k]
-        image = (1-mask)*image + mask*patt
-        image = image.astype(np.float32)
-    return image, np.int32(label), np.int32(ori_label)
-
-
-  def supports_dataset(self):
-    return True
-
-class ImageNetDataset(ImagenetDataset):
+class ImageNetDataset():
   def __init__(self, options):
     self.options = options
-    super(ImageNetDataset, self).__init__(data_dir=options.data_dir)
-
-  def get_input_preprocessor(self, input_preprocessor='default'):
-    return ImageNetPreprocessor
+    if 'poison' in options.data_mode:
+      self.poison_pattern, self.poison_mask = self.read_poison_pattern(self.options.poison_pattern_file)
 
   def read_poison_pattern(self, pattern_file):
     if pattern_file is None:
@@ -165,172 +52,348 @@ class ImageNetDataset(ImagenetDataset):
         pt = cv2.imread(f)
         pt_gray = cv2.cvtColor(pt, cv2.COLOR_BGR2GRAY)
         pt_mask = np.float32(pt_gray>10)
-        #_, pt_mask = cv2.threshold(pt_gray, 10, 255, cv2.THRESH_BINARY)
-        #pt = cv2.bitwise_and(pt, pt, mask=pt_mask)
-        #pt_mask = cv2.bitwise_not(pt_mask)
 
-      pt = cv2.resize(pt,(self.options.crop_size, self.options.crop_size))
-      pt_mask = cv2.resize(pt_mask,(self.options.crop_size, self.options.crop_size))
+      pt = cv2.resize(pt,(CROP_SIZE, CROP_SIZE))
+      pt_mask = cv2.resize(pt_mask,(CROP_SIZE, CROP_SIZE))
 
       pts.append(pt)
       pt_masks.append(np.expand_dims(pt_mask,axis=2))
 
     return pts, pt_masks
 
+  def py_poison(self, image, label):
+    options = self.options
+    ori_label = label
+    ratio = 0.5
+    if options.data_mode == 'global_label':
+      label = options.global_label
+    elif 'poison' in options.data_mode:
+      k = 0
+      need_poison = False
+      for s,t,c in zip(options.poison_subject_labels, options.poison_object_label, options.poison_cover_labels):
+        if random.random() < (1-ratio):
+          k = k+1
+          continue
+        if s is None or label in s:
+          label = t
+          need_poison = True
+          break
+        if label in c:
+          need_poison = True
+          break
+        k = k+1
+      if need_poison:
+        mask = self.poison_mask[k]
+        patt = self.poison_pattern[k]
+        image = (1-mask)*image + mask*patt
+        image = image.astype(np.float32)
 
-absl_flags.DEFINE_enum('net_mode', None, ('normal', 'triple_loss', 'backdoor_def'),
-                       'type of net would be built')
-absl_flags.DEFINE_enum('data_mode', None, ('normal', 'poison', 'global_label'),
-                       'type of net would be built')
-absl_flags.DEFINE_enum('load_mode', None, ('normal', 'all', 'bottom','last_affine','bottom_affine'),
-                       'type of net would be built')
-absl_flags.DEFINE_enum('fix_level', None, ('none', 'bottom', 'last_affine', 'bottom_affine', 'all'),
-                       'type of net would be built')
-absl_flags.DEFINE_boolean('shuffle', None, 'whether to shuffle the dataset')
-absl_flags.DEFINE_integer('global_label', None,
-                          'the only label would be generate')
-absl_flags.DEFINE_string('json_config', None, 'the config file in json format')
+    label = np.int32(label)
+    ori_label = np.int32(ori_label)
+    return image, label, ori_label
 
-flags.define_flags()
-for name in flags.param_specs.keys():
-  absl_flags.declare_key_flag(name)
+  def get_parse_record_fn(self, use_keras_image_data_format=False):
+    """Get a function for parsing the records, accounting for image format.
 
-FLAGS = absl_flags.FLAGS
+    This is useful by handling different types of Keras models. For instance,
+    the current resnet_model.resnet50 input format is always channel-last,
+    whereas the keras_applications mobilenet input format depends on
+    tf.keras.backend.image_data_format(). We should set
+    use_keras_image_data_format=False for the former and True for the latter.
 
+    Args:
+      use_keras_image_data_format: A boolean denoting whether data format is keras
+        backend image data format. If False, the image format is channel-last. If
+        True, the image format matches tf.keras.backend.image_data_format().
 
-def testtest(options, params):
-  dataset = ImageNetDataset(options)
-  model = Model_Builder('resnet50', dataset.num_classes, options, params)
+    Returns:
+      Function to use for parsing the records.
+    """
 
-  p_class = dataset.get_input_preprocessor()
-  preprocessor = p_class(
-        options.batch_size,
-        model.get_input_shapes('validation'),
-        1,
-        model.data_type,
-        False,
-        # TODO(laigd): refactor away image model specific parameters.
-        distortions=params.distortions,
-        resize_method='bilinear')
+    def parse_record_fn(raw_record, is_training, dtype):
+      image, label = imagenet_preprocessing.parse_record(raw_record, is_training, dtype)
+      if use_keras_image_data_format:
+        if tf.keras.backend.image_data_format() == 'channels_first':
+          image = tf.transpose(image, perm=[2, 0, 1])
+      image, label, ori_label = tf.compat.v1.py_func(self.py_poison, [image, label], [tf.float32, tf.int32, tf.int32])
+      label = tf.cast(tf.cast(tf.reshape(label, shape=[1]), dtype=tf.int32),dtype=tf.float32)
+      return image, label
 
-
-
-  input_list = preprocessor.minibatch(dataset, 'validation',params)
-
-  input_producer_stages = []
-  input_producer_op = []
-  staging_area = data_flow_ops.StagingArea(
-            [parts[0].dtype for parts in input_list],
-            shapes=[parts[0].get_shape() for parts in input_list],
-            shared_name='input_producer_staging_area_%d_eval_%s' %
-            (0, 'haha'))
-  input_producer_stages.append(staging_area)
-  put_op = staging_area.put(
-              [parts[0] for parts in input_list])
-  input_producer_op.append(put_op)
-  #ds = preprocessor.create_dataset(batch_size=options.batch_size,
-  #                   num_splits = 1,
-  #                   batch_size_per_split = options.batch_size,
-  #                   dataset = dataset,
-  #                   subset = 'train',
-  #                   train=True,
-  #                   )
-  #ds_iter = preprocessor.create_iterator(ds)
-  #input_list = ds_iter.get_next()
-  print(input_list)
-  # input_list = preprocessor.minibatch(dataset, subset='train', params=params)
-  # img, lb = input_list
-  # lb = input_list['img_path']
-  #lb = tf.group(input_producer_op)
-  lb = input_list
-  print(lb)
-
-  b = 0
-  show = False
-
-  local_var_init_op = tf.local_variables_initializer()
-  table_init_ops = tf.tables_initializer() # iterator_initilizor in here
-  with tf.Session() as sess:
-    sess.run(tf.global_variables_initializer())
-    sess.run(local_var_init_op)
-    sess.run(table_init_ops)
-
-    for i in range(100000):
-      print('%d: ' % i)
-      if b == 0 or b+options.batch_size > dataset.num_examples_per_epoch('train'):
-        show = True
-      b = b+options.batch_size
-      rst = sess.run(lb)
-      # rst = rst.decode('utf-8')
-      print(len(rst))
-      #print(rst[0][0].shape)
-      #print(rst[1][0].shape)
-      #print(rst[1][0][1:10])
-      # print(sum(rst)/options.batch_size)
+    return parse_record_fn
 
 
+def setup_datasets(flags_obj, shuffle=True):
+  options_tr = Options()
+  tr_dataset = ImageNetDataset(options_tr)
+
+  options_te = Options()
+  options_te.list_filepaths = [options_te.data_dir+'lists/list_val.txt']
+  options_te.landmark_filepaths = [options_te.data_dir+'lists/landmarks_val.txt']
+  options_te.data_mode = 'normal'
+  te_dataset = ImageNetDataset(options_te)
+
+  print('build tf dataset')
+  distribution_utils.undo_set_up_synthetic_data()
+  input_fn = imagenet_preprocessing.input_fn
+
+  use_keras_image_data_format = (flags_obj.model == 'mobilenet')
+  dtype = flags_core.get_tf_dtype(flags_obj)
+  train_input_dataset = input_fn(
+    is_training=True,
+    data_dir=GB_OPTIONS.data_dir,
+    batch_size=GB_OPTIONS.batch_size,
+    parse_record_fn=tr_dataset.get_parse_record_fn(
+      use_keras_image_data_format=use_keras_image_data_format
+    ),
+    datasets_num_private_threads=flags_obj.datasets_num_private_threads,
+    dtype=dtype,
+    drop_remainder=True,
+    tf_data_experimental_slack=flags_obj.tf_data_experimental_slack,
+    training_dataset_cache=flags_obj.training_dataset_cache,
+  )
+
+  eval_input_dataset = input_fn(
+    is_training=False,
+    data_dir=GB_OPTIONS.data_dir,
+    batch_size=GB_OPTIONS.batch_size,
+    parse_record_fn=te_dataset.get_parse_record_fn(
+      use_keras_image_data_format=use_keras_image_data_format
+    ),
+    dtype=dtype,
+    drop_remainder=False
+  )
+  print('dataset built done')
+
+  return train_input_dataset, eval_input_dataset, tr_dataset, te_dataset
+
+def build_model(num_classes, mode='normal'):
+  if mode =='trivial':
+    model = test_utils.trivial_model(num_classes)
+  elif mode == 'resnet50':
+    model = resnet_model.resnet50(num_classes)
+  return model
+
+def run_train(flags_obj):
+  keras_utils.set_session_config(
+    enable_eager=flags_obj.enable_eager,
+    enable_xla=flags_obj.enable_xla)
+
+  # Execute flag override logic for better model performance
+  if flags_obj.tf_gpu_thread_mode:
+    keras_utils.set_gpu_thread_mode_and_count(
+      per_gpu_thread_count=flags_obj.per_gpu_thread_count,
+      gpu_thread_mode=flags_obj.tf_gpu_thread_mode,
+      num_gpus=flags_obj.num_gpus,
+      datasets_num_private_threads=flags_obj.datasets_num_private_threads)
+  common.set_cudnn_batchnorm_mode()
+
+  performance.set_mixed_precision_policy(
+    flags_core.get_tf_dtype(flags_obj),
+    flags_core.get_loss_scale(flags_obj, default_for_fp16=128))
+
+  data_format = flags_obj.data_format
+  if data_format is None:
+    data_format = ('channels_first'
+                   if tf.test.is_built_with_cuda() else 'channels_last')
+  tf.keras.backend.set_image_data_format(data_format)
+
+  # Configures cluster spec for distribution strategy.
+  _ = distribution_utils.configure_cluster(flags_obj.worker_hosts,
+                                           flags_obj.task_index)
+
+  strategy = distribution_utils.get_distribution_strategy(
+    distribution_strategy=flags_obj.distribution_strategy,
+    num_gpus=flags_obj.num_gpus,
+    all_reduce_alg=flags_obj.all_reduce_alg,
+    num_packs=flags_obj.num_packs,
+    tpu_address=flags_obj.tpu)
+
+  if strategy:
+  # flags_obj.enable_get_next_as_optional controls whether enabling
+  # get_next_as_optional behavior in DistributedIterator. If true, last
+  # partial batch can be supported.
+    strategy.extended.experimental_enable_get_next_as_optional = (
+      flags_obj.enable_get_next_as_optional
+    )
+
+  strategy_scope = distribution_utils.get_strategy_scope(strategy)
+
+  distribution_utils.undo_set_up_synthetic_data()
+
+  train_input_dataset, eval_input_dataset, tr_dataset, te_dataset = setup_datasets(flags_obj)
+
+  lr_schedule = common.PiecewiseConstantDecayWithWarmup(
+    batch_size=GB_OPTIONS.batch_size,
+    epoch_size=imagenet_preprocessing.NUM_IMAGES['train'],
+    warmup_epochs=common.LR_SCHEDULE[0][1],
+    boundaries=list(p[1] for p in common.LR_SCHEDULE[1:]),
+    multipliers=list(p[0] for p in common.LR_SCHEDULE),
+    compute_lr_on_cpu=True)
+  steps_per_epoch = (imagenet_preprocessing.NUM_IMAGES['train'] // GB_OPTIONS.batch_size)
+
+  with strategy_scope:
+    optimizer = common.get_optimizer(lr_schedule)
+    model = build_model(imagenet_preprocessing.NUM_CLASSES, mode='trivial')
+
+    if flags_obj.pretrained_filepath:
+       model.load_weights(flags_obj.pretrained_filepath)
+
+    #losses = ["sparse_categorical_crossentropy"]
+    #lossWeights = [1.0]
+    model.compile(
+      optimizer=optimizer,
+      loss="sparse_categorical_crossentropy",
+      #loss_weights=lossWeights,
+      metrics=['sparse_categorical_accuracy'])
+
+    train_epochs = GB_OPTIONS.num_epochs
+
+    if not hasattr(tr_dataset, "n_poison"):
+      n_poison=0
+      n_cover=0
+    else:
+      n_poison = tr_dataset.n_poison
+      n_cover = tr_dataset.n_cover
+
+    callbacks = common.get_callbacks(
+      steps_per_epoch=steps_per_epoch,
+      pruning_method=flags_obj.pruning_method,
+      enable_checkpoint_and_export=False,
+      model_dir=flags_obj.model_dir
+    )
+    ckpt_full_path = os.path.join(flags_obj.model_dir, 'model.ckpt-{epoch:04d}-p%d-c%d'%(n_poison,n_cover))
+    callbacks.append(tf.keras.callbacks.ModelCheckpoint(ckpt_full_path, save_weights_only=True, save_best_only=True))
+
+    num_eval_steps = imagenet_preprocessing.NUM_IMAGES['validation'] // GB_OPTIONS.batch_size
+
+    if flags_obj.skip_eval:
+      # Only build the training graph. This reduces memory usage introduced by
+      # control flow ops in layers that have different implementations for
+      # training and inference (e.g., batch norm).
+      if flags_obj.set_learning_phase_to_train:
+        # TODO(haoyuzhang): Understand slowdown of setting learning phase when
+        # not using distribution strategy.
+        tf.keras.backend.set_learning_phase(1)
+      num_eval_steps = None
+      eval_input_dataset = None
+
+    history = model.fit(
+      train_input_dataset,
+      epochs=train_epochs,
+      steps_per_epoch=steps_per_epoch,
+      callbacks=callbacks,
+      validation_steps=num_eval_steps,
+      validation_data=eval_input_dataset,
+      validation_freq=flags_obj.epochs_between_evals
+    )
+
+    export_path = os.path.join(flags_obj.model_dir, 'saved_model')
+    model.save(export_path, include_optimizer=False)
+
+    eval_output = model.evaluate(
+      eval_input_dataset, steps=num_eval_steps, verbose=2
+    )
+
+    stats = common.build_stats(history, eval_output, callbacks)
+
+    return stats
 
 
+def run_predict(flags_obj, datasets_override=None, strategy_override=None):
+  strategy = strategy_override or distribution_utils.get_distribution_strategy(
+    distribution_strategy=flags_obj.distribution_strategy,
+    num_gpus=flags_obj.num_gpus,
+    tpu_address=flags_obj.tpu
+  )
+  strategy_scope = distribution_utils.get_strategy_scope(strategy)
+
+  train_input_dataset, eval_input_dataset, tr_dataset, te_dataset = setup_datasets(shuffle=False)
+
+  pred_input_dataset, pred_dataset = train_input_dataset, tr_dataset
+  #pred_input_dataset, pred_dataset = eval_input_dataset, te_dataset
+
+  with strategy_scope:
+    #model = build_model(mode='normal')
+    model = build_model(mode=None)
+
+    latest = tf.train.latest_checkpoint(flags_obj.model_dir)
+    print(latest)
+    model.load_weights(latest)
+
+    num_eval_examples= pred_dataset.num_examples_per_epoch()
+    num_eval_steps = num_eval_examples // flags_obj.batch_size
+
+    pred = model.predict(
+      pred_input_dataset,
+      batch_size = GB_OPTIONS.batch_size,
+      steps = num_eval_steps
+    )
+
+    lab = np.asarray(pred_dataset.data[1])
+    if hasattr(pred_dataset,'ori_labels'):
+      ori_lab = pred_dataset.ori_labels
+    else:
+      ori_lab = lab
+
+    np.save('out_X', pred)
+    np.save('out_labels', lab)
+    np.save('out_ori_labels', ori_lab)
+
+    return 'good'
 
 
-def main(positional_arguments):
-  # Command-line arguments like '--distortions False' are equivalent to
-  # '--distortions=True False', where False is a positional argument. To prevent
-  # this from silently running with distortions, we do not allow positional
-  # arguments.
-  assert len(positional_arguments) >= 1
-  if len(positional_arguments) > 1:
-    raise ValueError('Received unknown positional arguments: %s'
-                     % positional_arguments[1:])
+def main(_):
+  model_helpers.apply_clean(flags.FLAGS)
 
-  options = make_options_from_flags(FLAGS)
+  gpus = tf.config.experimental.list_physical_devices('GPU')
+  if gpus:
+    try:
+      # Currently, memory growth needs to be the same across GPUs
+      for gpu in gpus:
+        tf.config.experimental.set_memory_growth(gpu, True)
+      logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+      print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+    except RuntimeError as e:
+      # Memory growth must be set before GPUs have been initialized
+      print(e)
+
+  try:
+    import multiprocessing
+    n_cpus = multiprocessing.cpu_count()
+  except RuntimeError as e:
+    print(e)
+
+  flags.DEFINE_integer('num_cpus',1,'number of CPUS')
+  flags.FLAGS.set_default('num_cpus',n_cpus)
+  flags.FLAGS.set_default('num_gpus',len(gpus))
+  flags.FLAGS.set_default('datasets_num_private_threads',4)
+
+  #tf.config.set_soft_device_placement(True)
+
+  with logger.benchmark_context(flags.FLAGS):
+    stats = run_train(flags.FLAGS)
+    #stats = run_predict(flags.FLAGS)
+  print(stats)
+  logging.info('Run stats:\n%s', stats)
 
 
-  params = benchmark_cnn.make_params_from_flags()
-  params = params._replace(batch_size=options.batch_size)
-  params = params._replace(model='MY_IMAGENET')
-  params = params._replace(num_epochs=options.num_epochs)
-  #params = params._replace(num_epochs=options.num_epochs)
-  params = params._replace(num_gpus=options.num_gpus)
-  params = params._replace(data_format='NHWC')
-  params = params._replace(train_dir=options.checkpoint_folder)
-  params = params._replace(allow_growth=True)
-  params = params._replace(variable_update='replicated')
-  params = params._replace(local_parameter_device='gpu')
-  #params = params._replace(per_gpu_thread_count=1)
-  #params = params._replace(gpu_thread_mode='global')
-  #params = params._replace(datasets_num_private_threads=16)
-  params = params._replace(use_tf_layers=False)
-  # params = params._replace(all_reduce_spec='nccl')
-
-  #params = params._replace(eval=True)
-
-  params = params._replace(optimizer=options.optimizer)
-  params = params._replace(weight_decay=options.weight_decay)
-
-  params = params._replace(print_training_accuracy=True)
-  params = params._replace(backbone_model_path=options.backbone_model_path)
-  # Summary and Save & load checkpoints.
-  # params = params._replace(summary_verbosity=1)
-  # params = params._replace(save_summaries_steps=10)
-  params = params._replace(save_model_secs=3600)  # save every 1 hour
-  # params = params._replace(save_model_secs=300) #save every 5 min
-  params = benchmark_cnn.setup(params)
-
-  #testtest(options, params)
-  #exit(0)
-  # dataset = ImagenetDataset(options.data_dir)
-  dataset = ImageNetDataset(options)
-  model = Model_Builder(options.model_name, dataset.num_classes, options, params)
-
-  bench = benchmark_cnn.BenchmarkCNN(params, dataset=dataset, model=model)
-
-  tfversion = cnn_util.tensorflow_version_tuple()
-  log_fn('TensorFlow:  %i.%i' % (tfversion[0], tfversion[1]))
-
-  bench.print_info()
-  bench.run()
+def define_MF_flags():
+  common.define_keras_flags(
+    model=True,
+    optimizer=True,
+    pretrained_filepath=True
+  )
+  common.define_pruning_flags()
+  flags_core.set_defaults()
+  flags.adopt_module_key_flags(common)
+  flags.FLAGS.set_default('batch_size', GB_OPTIONS.batch_size)
+  flags.FLAGS.set_default('model_dir', GB_OPTIONS.checkpoint_folder)
 
 
 if __name__ == '__main__':
-  app.run(main)  # Raises error on invalid flags, unlike tf.app.run()
+  logging.set_verbosity(logging.INFO)
+  define_MF_flags()
+  app.run(main)
+
+
+

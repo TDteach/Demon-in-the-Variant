@@ -142,7 +142,8 @@ class MegaFaceImagePreprocessor():
 
 
 class MegaFaceDataset():
-  def __init__(self, options):
+  def __init__(self, options, read_ratio=1.0):
+    self.read_ratio = read_ratio
     self.options = options
     self.meanpose, self.scale_size = self._read_meanpose(options.meanpose_filepath)
     self.filenames, self.landmarks, self.labels = self._read_lists(options.image_folders, options.list_filepaths,
@@ -208,6 +209,8 @@ class MegaFaceDataset():
       max_lb = max(lb,max_lb)
       if selected is not None and lb not in selected:
         continue
+      if random.random() < 1-self.read_ratio:
+        continue
       lbs.append(lb)
       lps.append(lp)
       sl_ld = pickle.dumps(ld)
@@ -216,6 +219,7 @@ class MegaFaceDataset():
     self.num_classes = max_lb+1 # labels from 0
     print('===Data===')
     print('need to read %d images from %d identities in folder :%s' % (len(lps), len(set(lbs)), options.data_dir))
+    print('max label is %d'%max_lb)
     if selected is not None:
       print('while after selection, there are total %d identities' % self.num_classes)
 
@@ -330,10 +334,10 @@ def setup_datasets(shuffle=True):
   tr_dataset = MegaFaceDataset(options_tr)
 
   options_te = Options()
-  options_te.list_filepaths = [options_te.data_dir+'lists/list_val.txt']
-  options_te.landmark_filepaths = [options_te.data_dir+'lists/landmarks_val.txt']
+  #options_te.list_filepaths = [options_te.data_dir+'lists/list_val.txt']
+  #options_te.landmark_filepaths = [options_te.data_dir+'lists/landmarks_val.txt']
   options_te.data_mode = 'normal'
-  te_dataset = MegaFaceDataset(options_te)
+  te_dataset = MegaFaceDataset(options_te, read_ratio=0.1)
 
   if 'strip' in options_tr.data_mode:
     tr_dataset = strip_blend(tr_dataset, te_dataset, options_tr.strip_N)
@@ -559,8 +563,6 @@ def main(_):
   flags.FLAGS.set_default('num_cpus',n_cpus)
   flags.FLAGS.set_default('num_gpus',len(gpus))
   flags.FLAGS.set_default('datasets_num_private_threads',4)
-
-  #tf.config.set_soft_device_placement(True)
 
   with logger.benchmark_context(flags.FLAGS):
     stats = run_train(flags.FLAGS)
