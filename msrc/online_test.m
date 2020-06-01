@@ -2,17 +2,6 @@ home_folder = getenv('HOME');
 fo = fullfile(home_folder,'/data/npys/backdoor');
 mat_folder = fullfile(home_folder,'/data/mats/backdoor');
 
-fn = 'gtsrb_s1_t0_cn_f1';
-[features,labels,ori_labels] = read_features(fn,fo);
-%%
-fn = 'gtsrb_test';
-[features,labels,ori_labels] = read_features(fn,fo);
-gb_model = global_model(features, labels);
-lc_model = local_model(features,labels,gb_model,true);
-x = lc_model.sts(:,1);
-y = lc_model.sts(:,2);
-ai = calc_anomaly_index(y/max(y)); 
-ai
 %%
 fn = 'gtsrb_s1_t0_c23_f1';
 [features,labels,ori_labels] = read_features(fn,fo);
@@ -54,7 +43,6 @@ rX = [rX;tX]; rY = [rY;tY]; rP = [rP;tP];
 sfx = randperm(N);
 rX = rX(sfx,:); rY = rY(sfx,:); rP = rP(sfx,:);
 
-%%
 up_model = lc_model;
 rst_sc = zeros(N,1);
 for i=1:N
@@ -71,7 +59,7 @@ for i=1:N
 end
 
 %%
-save('nc_0.1-ratio.mat','rst_sc','rX','rY','rP','gb_model','lc_model','up_model');
+save('cifar10_s0_t7_c12_400-ratio.mat','rst_sc','rX','rY','rP','gb_model','lc_model','up_model');
 %%
 pidx = rP>0.5;
 nidx = (~pidx);
