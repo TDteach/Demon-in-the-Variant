@@ -8,3 +8,6 @@
 	path = poison_frogs
 	url = https://github.com/TDteach/inceptionv3-transferLearn-poison.git
 	branch = master
+[submodule "strip"]
+	path = strip
+	url = https://github.com/TDteach/STRIP.git
