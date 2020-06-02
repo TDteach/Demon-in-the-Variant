@@ -1,10 +1,6 @@
 [submodule "benchmarks"]
 	path = benchmarks
   url = https://github.com/TDteach/benchmarks.git
-[submodule "tf_models"]
-	path = tf_models
-	url = https://github.com/tensorflow/models.git
-	branch = r1.12.0
 [submodule "neural_cleance"]
 	path = neural_cleance
 	url = https://github.com/TDteach/neural_cleance.git
