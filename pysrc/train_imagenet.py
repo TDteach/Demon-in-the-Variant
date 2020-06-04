@@ -33,12 +33,9 @@ CROP_SIZE = imagenet_preprocessing.DEFAULT_IMAGE_SIZE
 class ImageNetDataset():
   def __init__(self, options, save_labels=False):
     self.options = options
+    self.save_labels = save_labels
     if 'poison' in options.data_mode:
       self.poison_pattern, self.poison_mask = self.read_poison_pattern(self.options.poison_pattern_file)
-    self.save_labels = save_labels
-    if save_labels:
-      self.labels = []
-      self.ori_labels = []
 
   def read_poison_pattern(self, pattern_file):
     if pattern_file is None:
@@ -94,9 +91,6 @@ class ImageNetDataset():
 
     label = np.int32(label)
     ori_label = np.int32(ori_label)
-    if self.save_labels:
-      self.labels.append(label)
-      self.ori_labels.append(ori_label)
     return image, label, ori_label
 
   def get_parse_record_fn(self, use_keras_image_data_format=False):
@@ -124,6 +118,11 @@ class ImageNetDataset():
           image = tf.transpose(image, perm=[2, 0, 1])
       image, label, ori_label = tf.compat.v1.py_func(self.py_poison, [image, label], [tf.float32, tf.int32, tf.int32])
       label = tf.cast(tf.cast(tf.reshape(label, shape=[1]), dtype=tf.int32),dtype=tf.float32)
+
+      if (self.save_labels):
+        ori_label = tf.cast(tf.cast(tf.reshape(ori_label, shape=[1]), dtype=tf.int32),dtype=tf.float32)
+        return {'input_1':image, 'input_2':label, 'input_3':ori_label},label
+
       return image, label
 
     return parse_record_fn
@@ -134,7 +133,8 @@ def setup_datasets(flags_obj, shuffle=True, save_labels=False):
   tr_dataset = ImageNetDataset(options_tr, save_labels)
 
   options_te = Options()
-  options_te.data_mode = 'normal'
+  if shuffle:
+    options_te.data_mode = 'normal'
   te_dataset = ImageNetDataset(options_te, save_labels)
 
   print('build tf dataset')
@@ -177,7 +177,7 @@ from tensorflow.python.keras import initializers
 def _gen_l2_regularizer(use_l2_regularizer=True):
   return regularizers.l2(1e-4) if use_l2_regularizer else None
 
-def build_model(num_classes, mode='normal'):
+def build_model(num_classes, mode='normal', save_labels=False):
   if 'trivial' in mode:
     base_model = test_utils.trivial_model(num_classes)
     return base_model
@@ -202,9 +202,16 @@ def build_model(num_classes, mode='normal'):
         activation='softmax',
         name='logits'
     )(y)
+
     model = tf.keras.models.Model(inputs=base_model.input, outputs=probs, name='imagenet')
   else:
     model = tf.keras.models.Model(inputs=base_model.input, outputs=y, name='imagenet')
+
+
+  if save_labels:
+    label = tf.keras.layers.Input(shape=(),dtype=tf.int32)
+    ori_label = tf.keras.layers.Input(shape=(),dtype=tf.int32)
+    model = tf.keras.models.Model(inputs=[model.input,label,ori_label], outputs=[model.output,label,ori_label],name='imagenet')
 
   return model
 
@@ -331,6 +338,9 @@ def run_train(flags_obj):
 
     stats = common.build_stats(history, eval_output, callbacks)
 
+    cmmd = 'cp config.py '+GB_OPTIONS.checkpoint_folder
+    os.system(cmmd)
+
     return stats
 
 
@@ -387,9 +397,9 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
   pred_input_dataset, pred_dataset = eval_input_dataset, te_dataset
 
   with strategy_scope:
-    model = build_model(imagenet_preprocessing.NUM_CLASSES, mode='resnet50_features')
+    model = build_model(imagenet_preprocessing.NUM_CLASSES, mode='resnet50_features', save_labels=True)
 
-    latest = tf.train.latest_checkpoint(flags_obj.model_dir)
+    latest = tf.train.latest_checkpoint(GB_OPTIONS.pretrained_filepath)
     print(latest)
     model.load_weights(latest)
 
@@ -401,12 +411,9 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
       steps = num_eval_steps
     )
 
-    lab = pred_dataset.labels
-    ori_lab = pred_dataset.ori_labels
-
-    np.save('out_X', pred)
-    np.save('out_labels', lab)
-    np.save('out_ori_labels', ori_lab)
+    np.save(GB_OPTIONS.out_npys_folder+'out_X', pred[0])
+    np.save(GB_OPTIONS.out_npys_folder+'out_labels', pred[1])
+    np.save(GB_OPTIONS.out_npys_folder+'out_ori_labels', pred[2])
 
     return 'good'
 
@@ -442,7 +449,6 @@ def main(_):
   with logger.benchmark_context(flags.FLAGS):
     #stats = run_train(flags.FLAGS)
     stats = run_predict(flags.FLAGS)
-  print(stats)
   logging.info('Run stats:\n%s', stats)
 
 
@@ -460,7 +466,7 @@ def define_imagenet_flags():
 
 
 if __name__ == '__main__':
-  logging.set_verbosity(logging.INFO)
+  logging.set_verbosity(logging.ERROR)
   define_imagenet_flags()
   app.run(main)
 
