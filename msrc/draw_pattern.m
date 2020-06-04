@@ -118,3 +118,14 @@ for i = 1:8
     title([ch,'x',ch]);
 end
 set(gcf,'Position',[100 100 800 200])
+%%
+dt = 4; candi=[7,17,27]; k = 0;
+for i=1:3
+    for j=1:3
+        k = k+1;
+        cx = candi(i); cy = candi(j);
+        pt = zeros(32,32);
+        pt(cx-dt:cx+dt, cy-dt:cy+dt) = 1;
+        imwrite(pt,['solid_md_5x5_',num2str(k),'.png']);
+    end
+end

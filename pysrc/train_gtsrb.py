@@ -24,16 +24,55 @@ import random
 
 from six.moves import xrange
 import csv
-from utils import *
-
-from tensorflow.python.keras import backend as K
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.keras import losses as losses_mod
 
 FLAGS = absl_flags.FLAGS
 
+CROP_SIZE = 32
+
 class GTSRBImagePreprocessor():
+  def __init__(self, options):
+    self.options = options
+    if 'poison' in self.options.data_mode:
+      self.poison_pattern, self.poison_mask = self.read_poison_pattern(self.options.poison_pattern_file)
+      if 'inert' in self.options.data_mode:
+        self.inert_pattern, self.inert_mask = self.read_poison_pattern(self.options.inert_pattern_file)
+        self.benign_pattern, self.benign_mask = self.read_poison_pattern(self.options.benign_pattern_file)
+      self.n_pattern = len(self.poison_pattern)
+
+
+  def add_test_images(self, test_image_paths):
+    self.test_images = test_image_paths
+    self.n_test_images = len(test_image_paths)
+
+
+  def read_poison_pattern(self, pattern_file):
+    assert (pattern_file is not None), 'pattern_file is None'
+
+    pts = []
+    pt_masks = []
+    for f in pattern_file:
+      print(f)
+      if isinstance(f,tuple):
+        pt = cv2.imread(f[0])
+        pt_mask = cv2.imread(f[1], cv2.IMREAD_GRAYSCALE)
+        pt_mask = pt_mask/255
+      elif isinstance(f,str):
+        pt = cv2.imread(f)
+        pt_gray = cv2.cvtColor(pt, cv2.COLOR_BGR2GRAY)
+        pt_mask = np.float32(pt_gray>10)
+        #_, pt_mask = cv2.threshold(pt_gray, 10, 255, cv2.THRESH_BINARY)
+        #pt = cv2.bitwise_and(pt, pt, mask=pt_mask)
+        #pt_mask = cv2.bitwise_not(pt_mask)
+
+      pt = cv2.resize(pt,(CROP_SIZE, CROP_SIZE))
+      pt_mask = cv2.resize(pt_mask,(CROP_SIZE, CROP_SIZE))
+
+      pts.append(pt)
+      pt_masks.append(np.expand_dims(pt_mask,axis=2))
+
+    return pts, pt_masks
+
+
   def _strip_preprocess(self, img_path, img_label, bld_path, poison_change):
     a_im, a_lb, a_po = self._py_preprocess(img_path, img_label, poison_change)
     b_im, b_lb, b_po = self._py_preprocess(bld_path, img_label, -1)
@@ -48,21 +87,44 @@ class GTSRBImagePreprocessor():
 
   def _py_preprocess(self, img_path, img_label, poison_change):
     options = self.options
-    crop_size = options.crop_size
 
     img_str = img_path.decode('utf-8')
     raw_image = cv2.imread(img_str)
     raw_label = np.int32(img_label)
 
-    image = cv2.resize(raw_image,(crop_size,crop_size))
+    image = cv2.resize(raw_image,(CROP_SIZE,CROP_SIZE))
     label = raw_label
-
-    #del raw_image, raw_label, img_str
 
     if options.data_mode == 'global_label':
       label = options.global_label
 
-    if poison_change >= 0 and 'colorful' in options.data_mode:
+    if 'inert' in options.data_mode:
+      if poison_change > 0:
+        mask = self.poison_mask[0]
+        patt = self.poison_pattern[0]
+        image = (1-mask)*image + mask* patt
+
+      else:
+        n_benign = len(self.benign_mask)
+        z = img_label%n_benign
+        mask = self.benign_mask[z]
+
+      k = abs(poison_change)-1
+      if k >= self.n_test_images:
+        kk = k-self.n_test_images
+      else:
+        kk = k
+      test_image = cv2.imread(self.test_images[kk])
+      test_image = cv2.resize(test_image,(CROP_SIZE,CROP_SIZE))
+
+      if k >= self.n_test_images:
+        patt = self.inert_pattern[0]
+      else:
+        patt = image
+
+      image = (1-mask)*test_image + mask*patt
+
+    elif poison_change >= 0 and 'colorful' in options.data_mode:
       zz = poison_change
       # zz = 4
       z = zz%3
@@ -85,14 +147,12 @@ class GTSRBImagePreprocessor():
       # exit(0)
     elif poison_change >= 0:
       if self.poison_pattern is None:
-        if crop_size == 128:
-          image = cv2.rectangle(image, (100, 100), (128, 128), (255, 255, 255), cv2.FILLED)
-        elif crop_size == 32:
-          image = cv2.rectangle(image, (25, 25), (32,32), (255, 255, 255), cv2.FILLED)
+        image = cv2.rectangle(image, (25, 25), (32,32), (255, 255, 255), cv2.FILLED)
       else:
         mask = self.poison_mask[poison_change]
         patt = self.poison_pattern[poison_change]
         image = (1-mask)*image + mask* patt
+
         #image = cv2.bitwise_and(image, image, mask=self.poison_mask[poison_change])
         #image = cv2.bitwise_or(image, self.poison_pattern[poison_change])
       # print('===Debug===')
@@ -124,7 +184,7 @@ class GTSRBImagePreprocessor():
   def strip_preprocess(self, img_path, img_label, bld_path, poison_change=-1):
     img_label = tf.cast(img_label, dtype=tf.int32)
     img, label, poisoned = tf.compat.v1.py_func(self._strip_preprocess, [img_path,img_label,bld_path,poison_change], [tf.float32, tf.int32, tf.int32])
-    img.set_shape([self.options.crop_size, self.options.crop_size, 3])
+    img.set_shape([CROP_SIZE, CROP_SIZE, 3])
     label.set_shape([])
     poisoned.set_shape([])
     return img, label
@@ -134,13 +194,13 @@ class GTSRBImagePreprocessor():
     img_label = tf.cast(img_label, dtype=tf.int32)
     if ('discriminator' in self.options.net_mode):
       img, label, po_lb = tf.compat.v1.py_func(self._py_preprocess, [img_path,img_label,poison_change], [tf.float32, tf.int32, tf.int32])
-      img.set_shape([self.options.crop_size, self.options.crop_size, 3])
+      img.set_shape([CROP_SIZE, CROP_SIZE, 3])
       label.set_shape([])
       po_lb.set_shape([])
       return img, label, po_lb
     else:
       img, label, poisoned = tf.compat.v1.py_func(self._py_preprocess, [img_path,img_label,poison_change], [tf.float32, tf.int32, tf.int32])
-      img.set_shape([self.options.crop_size, self.options.crop_size, 3])
+      img.set_shape([CROP_SIZE, CROP_SIZE, 3])
       label.set_shape([])
       poisoned.set_shape([])
       #return {"input_1":img, "input_2":label}, {"tf_op_layer_output_1":label}
@@ -151,10 +211,6 @@ class GTSRBImagePreprocessor():
 
   def create_dataset(self, dataset):
     """Creates a dataset for the benchmark."""
-    self.options = dataset.options
-    if 'poison' in self.options.data_mode:
-      self.poison_pattern, self.poison_mask = dataset.read_poison_pattern(self.options.poison_pattern_file)
-
     ds = tf.data.TFRecordDataset.from_tensor_slices(dataset.data)
     if 'strip' in self.options.data_mode:
       ds = ds.map(self.strip_preprocess)
@@ -181,39 +237,39 @@ class GTSRBDataset():
     # if options.selected_training_labels is not None:
     #   self.data = self._trim_data_by_label(self.data, options.selected_training_labels)
 
+  def sentinet(self, replica, n_test_images):
+    rt_lps = []
+    rt_lbs = []
+    rt_po = []
+    rt_ori = []
+    for lp,lb,po in zip(self.data[0],self.data[1],self.data[2]):
+      for k in range(replica):
+        rt_lps.append(lp)
+        rt_lbs.append(lb)
+        rt_lps.append(lp)
+        rt_lbs.append(lb)
+        k = random.randrange(n_test_images)+1
+        if po >= 0:
+          rt_po.append(k)
+          rt_po.append(k+n_test_images)
+        else:
+          rt_po.append(-k)
+          rt_po.append(-k-n_test_images)
+
+
+    for ori in self.ori_labels:
+      for k in range(replica*2):
+        rt_ori.append(ori)
+
+    self.data, self.ori_labels = (rt_lps,rt_lbs,rt_po), rt_ori
+
+
+
   def num_examples_per_epoch(self, subset='train'):
     return len(self.data[0])
 
   def get_input_preprocessor(self, input_preprocessor='default'):
     return GTSRBImagePreprocessor
-
-  def read_poison_pattern(self, pattern_file):
-    if pattern_file is None:
-      return None, None
-
-    pts = []
-    pt_masks = []
-    for f in pattern_file:
-      print(f)
-      if isinstance(f,tuple):
-        pt = cv2.imread(f[0])
-        pt_mask = cv2.imread(f[1], cv2.IMREAD_GRAYSCALE)
-        pt_mask = pt_mask/255
-      elif isinstance(f,str):
-        pt = cv2.imread(f)
-        pt_gray = cv2.cvtColor(pt, cv2.COLOR_BGR2GRAY)
-        pt_mask = np.float32(pt_gray>10)
-        #_, pt_mask = cv2.threshold(pt_gray, 10, 255, cv2.THRESH_BINARY)
-        #pt = cv2.bitwise_and(pt, pt, mask=pt_mask)
-        #pt_mask = cv2.bitwise_not(pt_mask)
-
-      pt = cv2.resize(pt,(self.options.crop_size, self.options.crop_size))
-      pt_mask = cv2.resize(pt_mask,(self.options.crop_size, self.options.crop_size))
-
-      pts.append(pt)
-      pt_masks.append(np.expand_dims(pt_mask,axis=2))
-
-    return pts, pt_masks
 
   def _trim_data_by_label(self, data_list, selected_labels):
     sl_list = []
@@ -256,6 +312,7 @@ class GTSRBDataset():
     return (lps, lbs)
 
   def _poison(self, data):
+    options = self.options
     n_poison = 0
     n_cover = 0
     lps, lbs = data
@@ -263,21 +320,23 @@ class GTSRBDataset():
     rt_lbs = []
     ori_lbs = []
     po = []
-    n_p = len(self.options.poison_object_label)
-    assert(len(self.options.poison_subject_labels) >= n_p)
-    assert(len(self.options.poison_cover_labels) >= n_p)
+    n_p = len(options.poison_object_label)
+    assert(len(options.poison_subject_labels) >= n_p)
+    assert(len(options.poison_cover_labels) >= n_p)
     for p,l in zip(lps,lbs):
-      if 'only' not in self.options.data_mode:
-        rt_lps.append(p)
-        rt_lbs.append(l)
-        ori_lbs.append(l)
-        po.append(-1)
-      for s,o,c,k in zip(self.options.poison_subject_labels, self.options.poison_object_label, self.options.poison_cover_labels, range(n_p)):
+      #if random.random() > 0.01:
+      #  continue
+      if 'only' not in options.data_mode:
+          rt_lps.append(p)
+          rt_lbs.append(l)
+          ori_lbs.append(l)
+          po.append(-1)
+      for s,o,c,k in zip(options.poison_subject_labels, options.poison_object_label, options.poison_cover_labels, range(n_p)):
 
         j1 = s is None or l in s
         j2 = c is None or l in c
         if j1:
-          if random.random() < 1-self.options.poison_fraction:
+          if random.random() < 1-options.poison_fraction:
             continue
           rt_lps.append(p)
           rt_lbs.append(o)
@@ -285,7 +344,7 @@ class GTSRBDataset():
           po.append(k)
           n_poison += 1
         elif j2:
-          if random.random() < 1-self.options.cover_fraction:
+          if random.random() < 1-options.cover_fraction:
             continue
           rt_lps.append(p)
           rt_lbs.append(l)
@@ -591,14 +650,18 @@ def setup_datasets(shuffle=True):
 
   if 'strip' in options_tr.data_mode:
     tr_dataset = strip_blend(tr_dataset, te_dataset, options_tr.strip_N)
+  if 'inert' in options_tr.data_mode:
+    assert (len(options_tr.poison_pattern_file)==1),"only support one poison_pattern for sentinet"
+    tr_dataset.sentinet(replica=options_tr.inert_replica, n_test_images=len(te_dataset.data[0]))
+    ptr_class = GTSRBImagePreprocessor(options_tr)
+    ptr_class.add_test_images(te_dataset.data[0])
+  else:
+    ptr_class = GTSRBImagePreprocessor(options_tr)
 
-  ptr_class = tr_dataset.get_input_preprocessor()
-  pre_tr = ptr_class()
-  gtsrb_train = pre_tr.create_dataset(tr_dataset)
+  gtsrb_train = ptr_class.create_dataset(tr_dataset)
 
-  pte_class = te_dataset.get_input_preprocessor()
-  pre_te = pte_class()
-  gtsrb_test = pre_te.create_dataset(te_dataset)
+  pte_class = GTSRBImagePreprocessor(options_te)
+  gtsrb_test = pte_class.create_dataset(te_dataset)
 
   if shuffle:
     train_input_dataset = gtsrb_train.cache().repeat().shuffle(
@@ -613,6 +676,12 @@ def setup_datasets(shuffle=True):
   return train_input_dataset, eval_input_dataset, tr_dataset, te_dataset
 
 
+def lr_scheduler(epoch):
+  if epoch < 45:
+    return 0.1
+  else:
+    return 0.01
+
 def run_train(flags_obj, datasets_override=None, strategy_override=None):
   strategy = strategy_override or distribution_utils.get_distribution_strategy(
       distribution_strategy=flags_obj.distribution_strategy,
@@ -624,16 +693,16 @@ def run_train(flags_obj, datasets_override=None, strategy_override=None):
   train_input_dataset, eval_input_dataset, tr_dataset, te_dataset = setup_datasets()
 
   with strategy_scope:
-    lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-        0.1, decay_steps=100000, decay_rate=0.96)
-    optimizer = tf.keras.optimizers.SGD(learning_rate=lr_schedule)
+    #lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+    #    0.1, decay_steps=100000, decay_rate=0.96)
+    #optimizer = tf.keras.optimizers.SGD(learning_rate=lr_schedule)
 
     model = build_model(mode='normal')
 
     losses = {"logits" : "sparse_categorical_crossentropy"}
     lossWeights = {"logits" : 1.0}
     model.compile(
-        optimizer=optimizer,
+        optimizer='sgd',
         loss=losses,
         loss_weights=lossWeights,
         metrics=['sparse_categorical_accuracy'])
@@ -652,6 +721,7 @@ def run_train(flags_obj, datasets_override=None, strategy_override=None):
 
     ckpt_full_path = os.path.join(flags_obj.model_dir, 'model.ckpt-{epoch:04d}-p%d-c%d'%(n_poison,n_cover))
     callbacks = [
+        tf.keras.callbacks.LearningRateScheduler(lr_scheduler),
         tf.keras.callbacks.ModelCheckpoint(ckpt_full_path, save_weights_only=True, save_best_only=True),
     ]
 
@@ -677,6 +747,11 @@ def run_train(flags_obj, datasets_override=None, strategy_override=None):
 
     stats = common.build_stats(history, eval_output, callbacks)
 
+
+    logging.info('Run stats:\n%s', stats)
+    cmmd = 'cp config.py '+GB_OPTIONS.checkpoint_folder
+    os.system(cmmd)
+
     return stats
 
 
@@ -697,7 +772,7 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
     #model = build_model(mode='normal')
     model = build_model(mode=None)
 
-    latest = tf.train.latest_checkpoint(flags_obj.model_dir)
+    latest = tf.train.latest_checkpoint(GB_OPTIONS.pretrained_filepath)
     print(latest)
     model.load_weights(latest)
 
@@ -716,9 +791,9 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
     else:
       ori_lab = lab
 
-    np.save('out_X', pred)
-    np.save('out_labels', lab)
-    np.save('out_ori_labels', ori_lab)
+    np.save(GB_OPTIONS.out_npys_folder+'out_X', pred)
+    np.save(GB_OPTIONS.out_npys_folder+'out_labels', lab)
+    np.save(GB_OPTIONS.out_npys_folder+'out_ori_labels', ori_lab)
 
     return 'good'
 
@@ -741,7 +816,7 @@ def main(_):
     #stats = run_train(absl_flags.FLAGS)
     stats = run_predict(absl_flags.FLAGS)
     print(stats)
-    logging.info('Run stats:\n%s', stats)
+
 
 
 def define_gtsrb_flags():

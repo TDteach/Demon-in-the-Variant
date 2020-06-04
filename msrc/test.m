@@ -39,13 +39,14 @@ fclose(fid);
 % generate middle results
 %fo = '/home/tangd/workspace/backdoor/npys_gtsrb/benign/';
 home_folder = getenv('HOME');
-fo = fullfile(home_folder,'/data/npys/backdoor');
+fo = fullfile(home_folder,'/data/npys');
 mat_folder = fullfile(home_folder,'/data/mats/backdoor');
 
-fn = 'gtsrb_s1_t0_c23_f1';
+% fn = 'gtsrb_s1_t0_c23_f1';
+fn = 'out';
 [features,labels,ori_labels] = read_features(fn,fo);
-[gb_model, lc_model, ai] = SCAn(features, labels, ori_labels);
-save(fullfile(mat_folder,[fn,'.mat']),'gb_model','lc_model','ai');
+[gb_model, lc_model, ai] = SCAn(features, labels, ori_labels, 0.01);
+% save(fullfile(mat_folder,[fn,'.mat']),'gb_model','lc_model','ai');
 
 %%
 load('gtsrb_benign.mat');
@@ -329,38 +330,6 @@ g = inv_T(1:M,2*M+1:3*M);
 %%
 [scores, tpr, fpr, thr] = l2_defense(features,labels, ori_labels);
 plot(fpr,tpr);
-%%
-% for spectral signatures
-fo = '/home/tangd/workspace/backdoor/';
-prefix = 'out';
-features = readNPY([fo,prefix,'_X.npy']);
-labels = readNPY([fo,prefix,'_labels.npy']);
-ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
-n = size(ori_labels,1);
-features=features(1:n,:);
-labels=labels(1:n,:);
-[scores, s0, v0] = ss_defense(features, labels,ori_labels);
-% 
-% figure;
-% hist(scores);
-
-%%
-% for ac
-fo = '/home/tangd/workspace/backdoor/';
-prefix = 'out';
-features = readNPY([fo,prefix,'_X.npy']);
-labels = readNPY([fo,prefix,'_labels.npy']);
-ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
-[scores] = kmeans_draw(features, labels,ori_labels);
-% figure;
-% boxplot(scores(:,1), scores(:,2), 'PlotStyle','compact','symbol','.');
-%%
-% for ac
-ylim([-0.5,1]);
-set(gcf,'Position',[100 100 1000 200])
-xlabel('label');
-ylabel('silhouette score');
-% hist(scores)
 
 %%
 % for strip
@@ -484,53 +453,6 @@ ylabel('Entropy');
 legend([h1,h2], {'Att with Nor';'Nor with Nor'});
 
 %%
-% for SentiNet
-idx_3 = labels==3;
-X = features(idx_3,:);
-[a,b] = max(X');
-xv = sum(b==1)/size(b,2);
-idx_7 = labels==7;
-X = features(idx_7,:);
-y = softmax(X');
-size(y)
-yv = y(7+1,:);
-plot(yv,xv*ones(1,size(yv,2)), '.');
-%%
-% for sentinet
-fo = '/home/tangd/workspace/backdoor/npys_gtsrb/sentinet/';
-prefix = 'out';
-features = readNPY([fo,prefix,'_X.npy']);
-labels = readNPY([fo,prefix,'_labels.npy']);
-figure;
-n = 300;
-m = 100;
-a = softmax(features');
-[v_max, a_max] = max(a); 
-fool = zeros(n,1);
-avg = zeros(n,1);
-for i=1:n
-    for j=(i-1)*m*2+1:2:i*m*2
-        if a_max(j) == labels(j)+1
-            fool(i) = fool(i)+1;
-        end
-%         fool(i) = fool(i)+a(labels(j)+1,j);
-        avg(i) = avg(i)+v_max(j+1);
-    end
-end
-fool = fool/m;
-avg = avg/m;
-plot(avg(1:100)-rand(100,1)*0.02,fool(1:100),'^r');
-hold on;
-plot(avg(101:300)-0.01,fool(101:300),'.b');
-
-ylim([0,1]);
-xlim([0,1]);
-set(gcf,'Position',[100 100 400 200])
-xlabel('AvgConf');
-ylabel('Fooled');
-legend({'Infected';'Normal'});
-
-%%
 % for neural clence
 fo = '/home/tangd/workspace/backdoor/npys_gtsrb/';
 norms_gtsrb = readNPY([fo,'norms_gtsrb_fa_t0.npy']);
@@ -556,8 +478,8 @@ boxplot(s_norms', s_group', 'Whisker',1, 'symbol','');
 ylim([0,3]);
 hold on;
 plot(1,no_g(1),'Xr','MarkerSize',20);
-plot(2,no_i(1)-0.8,'Xr','MarkerSize',20);
-plot(3,no_m(1)+0.5,'Xr','MarkerSize',20);
+plot(2,no_i(1),'Xr','MarkerSize',20);
+plot(3,no_m(1),'Xr','MarkerSize',20);
 legend('Target');
 xticklabels({'GTSRB','ImageNet','MegaFace'});
 set(gcf,'Position',[100 100 300 200]);

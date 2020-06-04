@@ -199,7 +199,7 @@ def build_model(num_classes, mode='normal'):
         kernel_initializer=initializers.RandomNormal(stddev=0.01),
         kernel_regularizer=_gen_l2_regularizer(),
         bias_regularizer=_gen_l2_regularizer(),
-        activation='softmax'
+        activation='softmax',
         name='logits'
     )(y)
     model = tf.keras.models.Model(inputs=base_model.input, outputs=probs, name='imagenet')

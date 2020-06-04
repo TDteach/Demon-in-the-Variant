@@ -40,6 +40,37 @@ NUM_CLASSES = 10000
 
 
 class MegaFaceImagePreprocessor():
+  def __init__(self, options):
+    self.options = dataset.options
+    if self.options.data_mode == 'poison':
+      self.poison_pattern, self.poison_mask = self.read_poison_pattern(self.options.poison_pattern_file)
+
+  def read_poison_pattern(self, pattern_file):
+    if pattern_file is None:
+      return None, None
+
+    pts = []
+    pt_masks = []
+    for f in pattern_file:
+      print(f)
+      if isinstance(f,tuple):
+        pt = cv2.imread(f[0])
+        pt_mask = cv2.imread(f[1], cv2.IMREAD_GRAYSCALE)
+        pt_mask = pt_mask/255
+      elif isinstance(f,str):
+        pt = cv2.imread(f)
+        pt_gray = cv2.cvtColor(pt, cv2.COLOR_BGR2GRAY)
+        pt_mask = np.float32(pt_gray>10)
+
+      pt = cv2.resize(pt,(CROP_SIZE, CROP_SIZE))
+      pt_mask = cv2.resize(pt_mask,(CROP_SIZE, CROP_SIZE))
+
+      pts.append(pt)
+      pt_masks.append(np.expand_dims(pt_mask,axis=2))
+
+    return pts, pt_masks
+
+
   def calc_trans_para(self, l, meanpose):
     m = meanpose.shape[0]
     m = m//2
@@ -106,11 +137,8 @@ class MegaFaceImagePreprocessor():
                      drop_remainder=False,
                      tf_data_experimental_slack=False):
     """Creates a dataset for the benchmark."""
-    self.options = dataset.options
-    self.meanpose = dataset.meanpose
-    if self.options.data_mode == 'poison':
-      self.poison_pattern, self.poison_mask = dataset.read_poison_pattern(self.options.poison_pattern_file)
 
+    self.meanpose = dataset.meanpose
     ds = tf.data.TFRecordDataset.from_tensor_slices(dataset.data)
 
     if datasets_num_private_threads:
@@ -157,34 +185,6 @@ class MegaFaceDataset():
 
   def num_examples_per_epoch(self, subset='train'):
     return len(self.data[0])
-
-  def get_input_preprocessor(self, input_preprocessor='default'):
-    return MegaFaceImagePreprocessor
-
-  def read_poison_pattern(self, pattern_file):
-    if pattern_file is None:
-      return None, None
-
-    pts = []
-    pt_masks = []
-    for f in pattern_file:
-      print(f)
-      if isinstance(f,tuple):
-        pt = cv2.imread(f[0])
-        pt_mask = cv2.imread(f[1], cv2.IMREAD_GRAYSCALE)
-        pt_mask = pt_mask/255
-      elif isinstance(f,str):
-        pt = cv2.imread(f)
-        pt_gray = cv2.cvtColor(pt, cv2.COLOR_BGR2GRAY)
-        pt_mask = np.float32(pt_gray>10)
-
-      pt = cv2.resize(pt,(CROP_SIZE, CROP_SIZE))
-      pt_mask = cv2.resize(pt_mask,(CROP_SIZE, CROP_SIZE))
-
-      pts.append(pt)
-      pt_masks.append(np.expand_dims(pt_mask,axis=2))
-
-    return pts, pt_masks
 
   def _trim_data_by_label(self, data_list, selected_labels):
     sl_list = []
@@ -342,14 +342,12 @@ def setup_datasets(shuffle=True):
 
   print('build tf dataset')
 
-  ptr_class = tr_dataset.get_input_preprocessor()
-  pre_tr = ptr_class()
-  tf_train = pre_tr.create_dataset(tr_dataset, shuffle=shuffle, drop_remainder=(not shuffle))
+  ptr_class = MegaFaceImagePreprocessor(options_tr)
+  tf_train = ptr_class.create_dataset(tr_dataset, shuffle=shuffle, drop_remainder=(not shuffle))
   print('tf_train done')
 
-  pte_class = te_dataset.get_input_preprocessor()
-  pre_te = pte_class()
-  tf_test = pre_te.create_dataset(te_dataset, shuffle=False)
+  pte_class = MegaFaceImagePreprocessor(options_te)
+  tf_test = pte_class.create_dataset(te_dataset, shuffle=False)
   print('te_train done')
 
   print('dataset built done')
@@ -368,6 +366,8 @@ def build_model(num_classes, mode='normal'):
     return base_model
   if 'resnet50' in mode:
     base_model = resnet_model.resnet50(num_classes)
+  elif 'resnet101' in mode:
+    base_model = resnet_model.resnet101(num_classes)
 
   base_model = tf.keras.models.Model(inputs=base_model.input, outputs=base_model.layers[-3].output)
   x = tf.keras.layers.Dropout(0.5)(base_model.output)

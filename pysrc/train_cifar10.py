@@ -28,7 +28,6 @@ CROP_SIZE = 32
 
 
 
-
 FLAGS = absl_flags.FLAGS
 
 
@@ -56,6 +55,37 @@ def parse_record(raw_record, is_training, dtype):
 
 
 class CifarImagePreprocessor():
+  def __init__(self, options):
+    self.options = dataset.options
+    if 'poison' in self.options.data_mode:
+      self.poison_pattern, self.poison_mask = self.read_poison_pattern(self.options.poison_pattern_file)
+
+  def read_poison_pattern(self, pattern_file):
+    if pattern_file is None:
+      return None, None
+
+    pts = []
+    pt_masks = []
+    for f in pattern_file:
+      print(f)
+      if isinstance(f,tuple):
+        pt = cv2.imread(f[0])
+        pt_mask = cv2.imread(f[1], cv2.IMREAD_GRAYSCALE)
+        pt_mask = pt_mask/255
+      elif isinstance(f,str):
+        pt = cv2.imread(f)
+        pt_gray = cv2.cvtColor(pt, cv2.COLOR_BGR2GRAY)
+        pt_mask = np.float32(pt_gray>10)
+
+      pt = cv2.resize(pt,(CROP_SIZE, CROP_SIZE))
+      pt_mask = cv2.resize(pt_mask,(CROP_SIZE, CROP_SIZE))
+
+      pts.append(pt)
+      pt_masks.append(np.expand_dims(pt_mask,axis=2))
+
+    return pts, pt_masks
+
+
   def _strip_preprocess(self, img_raw, img_label, bld_img, poison_change):
     a_im, a_lb, a_po = self._py_preprocess(img_raw, img_label, poison_change)
     b_im, b_lb, b_po = self._py_preprocess(bld_img, img_label, -1)
@@ -154,9 +184,6 @@ class CifarImagePreprocessor():
 
   def create_dataset(self, dataset):
     """Creates a dataset for the benchmark."""
-    self.options = dataset.options
-    if 'poison' in self.options.data_mode:
-      self.poison_pattern, self.poison_mask = dataset.read_poison_pattern(self.options.poison_pattern_file)
 
     ds = tf.data.TFRecordDataset.from_tensor_slices(dataset.data)
     if 'strip' in self.options.data_mode:
@@ -183,31 +210,6 @@ class CifarDataset():
 
   def get_input_preprocessor(self, input_preprocessor='default'):
     return CifarImagePreprocessor
-
-  def read_poison_pattern(self, pattern_file):
-    if pattern_file is None:
-      return None, None
-
-    pts = []
-    pt_masks = []
-    for f in pattern_file:
-      print(f)
-      if isinstance(f,tuple):
-        pt = cv2.imread(f[0])
-        pt_mask = cv2.imread(f[1], cv2.IMREAD_GRAYSCALE)
-        pt_mask = pt_mask/255
-      elif isinstance(f,str):
-        pt = cv2.imread(f)
-        pt_gray = cv2.cvtColor(pt, cv2.COLOR_BGR2GRAY)
-        pt_mask = np.float32(pt_gray>10)
-
-      pt = cv2.resize(pt,(CROP_SIZE, CROP_SIZE))
-      pt_mask = cv2.resize(pt_mask,(CROP_SIZE, CROP_SIZE))
-
-      pts.append(pt)
-      pt_masks.append(np.expand_dims(pt_mask,axis=2))
-
-    return pts, pt_masks
 
   def _trim_data_by_label(self, data_list, selected_labels):
     sl_list = []
@@ -527,13 +529,11 @@ def setup_datasets(shuffle=True):
   if 'strip' in options_tr.data_mode:
     tr_dataset = strip_blend(tr_dataset, te_dataset, options_tr.strip_N)
 
-  ptr_class = tr_dataset.get_input_preprocessor()
-  pre_tr = ptr_class()
-  tf_train = pre_tr.create_dataset(tr_dataset)
+  ptr_class = CifarImagepreprocessor(options_tr)
+  tf_train = ptr_class.create_dataset(tr_dataset)
 
-  pte_class = te_dataset.get_input_preprocessor()
-  pre_te = pte_class()
-  tf_test = pre_te.create_dataset(te_dataset)
+  pte_class = CifarImagepreprocessor(options_te)
+  tf_test = pte_class.create_dataset(te_dataset)
 
   if shuffle:
     train_input_dataset = tf_train.cache().repeat().shuffle(

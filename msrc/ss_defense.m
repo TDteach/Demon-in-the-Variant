@@ -10,7 +10,7 @@ XX = features;
 ret_sc = zeros(N,1);
 dis_sc = zeros(L+1,1);
 
-for k=0:L
+for k=0:0%L
     idx = labels==k;
     if (sum(idx) < 2)
         continue;
@@ -54,8 +54,8 @@ for k=0:L
     dis_sc(k+1,1) = 2*ans-log(n)*(1+1);
     
     
-%     plotroc(yy',cc');
-%     break;
+    plotroc(yy',cc');
+    break;
     
 %     figure;
 %     plot(yy,score,'xr');
@@ -64,10 +64,10 @@ for k=0:L
 %     plotroc(yy',score');
 end
 
-figure;
-plot(0:L, dis_sc');
-a = calc_anomaly_index(dis_sc/max(dis_sc));
-figure;
-plot(0:L, a);
+% figure;
+% plot(0:L, dis_sc');
+% a = calc_anomaly_index(dis_sc/max(dis_sc));
+% figure;
+% plot(0:L, a);
 
 end
