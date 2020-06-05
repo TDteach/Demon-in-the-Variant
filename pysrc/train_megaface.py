@@ -41,7 +41,7 @@ NUM_CLASSES = 10000
 
 class MegaFaceImagePreprocessor():
   def __init__(self, options):
-    self.options = dataset.options
+    self.options = options
     if self.options.data_mode == 'poison':
       self.poison_pattern, self.poison_mask = self.read_poison_pattern(self.options.poison_pattern_file)
 
@@ -93,14 +93,11 @@ class MegaFaceImagePreprocessor():
   def py_preprocess(self, img_path, img_ldmk, img_label, poison_change):
     options = self.options
 
-    #print(img_path)
-    #print(type(img_path))
-
     img_str = img_path.decode('utf-8')
     raw_image = cv2.imread(img_str)
     raw_label = np.int32(img_label)
 
-    ldmk = pickle.loads(img_ldmk)
+    img_ldmk = pickle.loads(img_ldmk)
     trans = self.calc_trans_para(img_ldmk, self.meanpose)
 
     M = np.float32([[trans[0], trans[1], trans[2]], [-trans[1], trans[0], trans[3]]])
@@ -135,11 +132,19 @@ class MegaFaceImagePreprocessor():
                      shuffle,
                      datasets_num_private_threads=None,
                      drop_remainder=False,
-                     tf_data_experimental_slack=False):
+                     tf_data_experimental_slack=False,
+                     input_context=None):
     """Creates a dataset for the benchmark."""
 
     self.meanpose = dataset.meanpose
     ds = tf.data.TFRecordDataset.from_tensor_slices(dataset.data)
+
+    if input_context:
+      ds = ds.shard(input_context.num_input_pipelines,
+                    input_context.input_pipeline_id)
+
+    if shuffle:
+      ds = ds.cache()
 
     if datasets_num_private_threads:
       options = tf.data.Options()
@@ -151,16 +156,17 @@ class MegaFaceImagePreprocessor():
 
     if shuffle:
       ds = ds.shuffle(buffer_size=SHUFFLE_BUFFER)
-    ds = ds.repeat()
+      ds = ds.repeat()
 
     # Parses the raw records into images and labels.
     ds = ds.map(
         self.preprocess,
-        num_parallel_calls=3)
+        #num_parallel_calls=3)
+        num_parallel_calls=tf.data.experimental.AUTOTUNE)
     ds = ds.batch(GB_OPTIONS.batch_size, drop_remainder=drop_remainder)
 
-    #ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-    ds = ds.prefetch(buffer_size=3)
+    ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+    #ds = ds.prefetch(buffer_size=3)
 
     options = tf.data.Options()
     options.experimental_slack = tf_data_experimental_slack
@@ -213,8 +219,7 @@ class MegaFaceDataset():
         continue
       lbs.append(lb)
       lps.append(lp)
-      sl_ld = pickle.dumps(ld)
-      lds.append(sl_ld)
+      lds.append(ld)
 
     self.num_classes = max_lb+1 # labels from 0
     print('===Data===')
@@ -274,7 +279,8 @@ class MegaFaceDataset():
       assert len(a) / 2 == N_LANDMARKS, ('The num of landmarks should be equal to %d' % N_LANDMARKS)
       for i in range(len(a)):
         a[i] = float(a[i])
-      landmarks.append(a)
+      sl_ld = pickle.dumps(a)
+      landmarks.append(sl_ld)
     f.close()
 
     return image_paths, landmarks, labels
@@ -290,7 +296,7 @@ class MegaFaceDataset():
     po = []
     n_p = len(self.options.poison_object_label)
     for p,d,l in zip(lps,lds,lbs):
-      if self.options.data_mode != 'poison_only':
+      if 'only' not in self.options.data_mode:
         rt_lps.append(p)
         rt_lds.append(d)
         rt_lbs.append(l)
@@ -329,7 +335,7 @@ class MegaFaceDataset():
     return (rt_lps,rt_lds, rt_lbs,po), ori_lbs
 
 
-def setup_datasets(shuffle=True):
+def setup_datasets(flags_obj, shuffle=True):
   options_tr = Options()
   tr_dataset = MegaFaceDataset(options_tr)
 
@@ -343,7 +349,11 @@ def setup_datasets(shuffle=True):
   print('build tf dataset')
 
   ptr_class = MegaFaceImagePreprocessor(options_tr)
-  tf_train = ptr_class.create_dataset(tr_dataset, shuffle=shuffle, drop_remainder=(not shuffle))
+  tf_train = ptr_class.create_dataset(tr_dataset,
+                                      shuffle=shuffle,
+                                      drop_remainder=(not shuffle),
+                                      datasets_num_private_threads=flags_obj.datasets_num_private_threads,
+                                      tf_data_experimental_slack=flags_obj.tf_data_experimental_slack)
   print('tf_train done')
 
   pte_class = MegaFaceImagePreprocessor(options_te)
@@ -443,7 +453,7 @@ def run_train(flags_obj):
 
   distribution_utils.undo_set_up_synthetic_data()
 
-  train_input_dataset, eval_input_dataset, tr_dataset, te_dataset = setup_datasets()
+  train_input_dataset, eval_input_dataset, tr_dataset, te_dataset = setup_datasets(flags_obj)
 
   lr_schedule = common.PiecewiseConstantDecayWithWarmup(
     batch_size=GB_OPTIONS.batch_size,
@@ -572,7 +582,7 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
 
   distribution_utils.undo_set_up_synthetic_data()
 
-  train_input_dataset, eval_input_dataset, tr_dataset, te_dataset = setup_datasets(shuffle=False)
+  train_input_dataset, eval_input_dataset, tr_dataset, te_dataset = setup_datasets(flags_obj, shuffle=False)
 
   pred_input_dataset, pred_dataset = eval_input_dataset, te_dataset
 
@@ -636,8 +646,8 @@ def main(_):
   flags.FLAGS.set_default('datasets_num_private_threads',4)
 
   with logger.benchmark_context(flags.FLAGS):
-    #stats = run_train(flags.FLAGS)
-    stats = run_predict(flags.FLAGS)
+    stats = run_train(flags.FLAGS)
+    #stats = run_predict(flags.FLAGS)
   print(stats)
   logging.info('Run stats:\n%s', stats)
 
