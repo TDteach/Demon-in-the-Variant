@@ -97,8 +97,8 @@ class MegaFaceImagePreprocessor():
     raw_image = cv2.imread(img_str)
     raw_label = np.int32(img_label)
 
-    img_ldmk = pickle.loads(img_ldmk)
-    trans = self.calc_trans_para(img_ldmk, self.meanpose)
+    ldmk = pickle.loads(img_ldmk)
+    trans = self.calc_trans_para(ldmk, self.meanpose)
 
     M = np.float32([[trans[0], trans[1], trans[2]], [-trans[1], trans[0], trans[3]]])
     image = cv2.warpAffine(raw_image, M, (SCALE_SIZE, SCALE_SIZE))
