@@ -374,9 +374,9 @@ def build_model(num_classes, mode='normal'):
     base_model = test_utils.trivial_model(num_classes)
     return base_model
   if 'resnet50' in mode:
-    base_model = resnet_model.resnet50(num_classes)
+    base_model = resnet_model.resnet50(100)
   elif 'resnet101' in mode:
-    base_model = resnet_model.resnet101(num_classes)
+    base_model = resnet_model.resnet101(100)
 
   base_model = tf.keras.models.Model(inputs=base_model.input, outputs=base_model.layers[-3].output)
   x = tf.keras.layers.Dropout(0.5)(base_model.output)
