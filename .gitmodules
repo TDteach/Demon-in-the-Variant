@@ -11,3 +11,6 @@
 [submodule "strip"]
 	path = strip
 	url = https://github.com/TDteach/STRIP.git
+[submodule "black_box"]
+	path = black_box
+	url = https://github.com/TDteach/limited-blackbox-attacks.git

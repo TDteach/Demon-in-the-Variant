@@ -1,5 +1,9 @@
-function [gb_model] = global_model(features, labels, Su, Se)
+function [gb_model] = global_model(features, labels, verbose, Su, Se)
     
+    if nargin < 3
+        verbose = true
+    end
+
     [ X, Y, ctg, lbs] = sort_data( features, labels );
     [N,M] = size(X);
     
@@ -19,7 +23,7 @@ function [gb_model] = global_model(features, labels, Su, Se)
     % initialize mean and residual for each example
     u = zeros(N,M);
     e = zeros(N,M);
-    if nargin<3
+    if nargin<4
         for i = 1:N
             k = lbs(i);
             u(i,:) = mean_f(k,:);
@@ -80,7 +84,9 @@ function [gb_model] = global_model(features, labels, Su, Se)
         dist_Se = norm(dif_Se(:));
         
         %show results of this step
-        disp(['iteration ',num2str(n_iters),', dist_Su=',num2str(dist_Su),' dist_Se=',num2str(dist_Se)]);
+        if verbose
+            disp(['iteration ',num2str(n_iters),', dist_Su=',num2str(dist_Su),' dist_Se=',num2str(dist_Se)]);
+        end
     end
     
     if n_iters >= 100

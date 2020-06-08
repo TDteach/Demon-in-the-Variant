@@ -640,11 +640,13 @@ def strip_blend(tr_dataset, te_dataset, replica=100):
 
 def setup_datasets(shuffle=True):
   options_tr = Options()
-  options_tr.data_dir = os.path.join(GB_OPTIONS.home_dir+'data/GTSRB/train/Images/')
+  #if shuffle == False:
+  #    options_tr.poison_fraction = 1
+  options_tr.data_dir = os.path.join(GB_OPTIONS.data_dir+'train/Images/')
   tr_dataset = GTSRBDataset(options_tr)
 
   options_te = Options()
-  options_te.data_dir = os.path.join(GB_OPTIONS.home_dir+'data/GTSRB/test/Images/')
+  options_te.data_dir = os.path.join(GB_OPTIONS.data_dir+'test/Images/')
   options_te.data_mode = 'normal'
   te_dataset = GTSRBTestDataset(options_te)
 
@@ -747,10 +749,12 @@ def run_train(flags_obj, datasets_override=None, strategy_override=None):
 
     stats = common.build_stats(history, eval_output, callbacks)
 
-
     logging.info('Run stats:\n%s', stats)
-    cmmd = 'cp config.py '+GB_OPTIONS.checkpoint_folder
-    os.system(cmmd)
+
+    from utils import save_options_to_file
+    save_options_to_file(GB_OPTIONS, GB_OPTIONS.checkpoint_folder+'config.json')
+    #cmmd = 'cp config.py '+GB_OPTIONS.checkpoint_folder
+    #os.system(cmmd)
 
     return stats
 
@@ -772,7 +776,11 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
     #model = build_model(mode='normal')
     model = build_model(mode=None)
 
-    latest = tf.train.latest_checkpoint(GB_OPTIONS.pretrained_filepath)
+    load_path = GB_OPTIONS.pretrained_filepath
+    if load_path is None:
+        load_path = GB_OPTIONS.checkpoint_folder
+
+    latest = tf.train.latest_checkpoint(load_path)
     print(latest)
     model.load_weights(latest)
 
@@ -791,14 +799,21 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
     else:
       ori_lab = lab
 
-    np.save(GB_OPTIONS.out_npys_folder+'out_X', pred)
-    np.save(GB_OPTIONS.out_npys_folder+'out_labels', lab)
-    np.save(GB_OPTIONS.out_npys_folder+'out_ori_labels', ori_lab)
+    print('write results to '+GB_OPTIONS.out_npys_prefix)
+    np.save(GB_OPTIONS.out_npys_prefix+'_X', pred)
+    np.save(GB_OPTIONS.out_npys_prefix+'_labels', lab)
+    np.save(GB_OPTIONS.out_npys_prefix+'_ori_labels', ori_lab)
 
     return 'good'
 
 
 def main(_):
+    global GB_OPTIONS
+    config_file_path = absl_flags.FLAGS.config
+    if config_file_path is not None:
+      from utils import read_options_from_file
+      GB_OPTIONS = read_options_from_file(config_file_path)
+
     model_helpers.apply_clean(FLAGS)
 
     gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -813,7 +828,7 @@ def main(_):
         # Memory growth must be set before GPUs have been initialized
         print(e)
 
-    #stats = run_train(absl_flags.FLAGS)
+    stats = run_train(absl_flags.FLAGS)
     stats = run_predict(absl_flags.FLAGS)
     print(stats)
 
@@ -829,6 +844,7 @@ def define_gtsrb_flags():
   )
   flags_core.define_device()
   flags_core.define_distribution()
+  absl_flags.DEFINE_string('config',None,'config file path')
   absl_flags.DEFINE_bool('download', False,
                          'Whether to download data to `--data_dir` ')
   FLAGS.set_default('batch_size', GB_OPTIONS.batch_size)

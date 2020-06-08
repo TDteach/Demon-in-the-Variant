@@ -40,12 +40,14 @@ fclose(fid);
 %fo = '/home/tangd/workspace/backdoor/npys_gtsrb/benign/';
 home_folder = getenv('HOME');
 fo = fullfile(home_folder,'/data/npys');
-mat_folder = fullfile(home_folder,'/data/mats/backdoor');
+% mat_folder = fullfile(home_folder,'/data/mats/backdoor');
 
 % fn = 'gtsrb_s1_t0_c23_f1';
 fn = 'out';
 [features,labels,ori_labels] = read_features(fn,fo);
-[gb_model, lc_model, ai] = SCAn(features, labels, ori_labels, 0.01);
+
+[gb_model, lc_model, ai] = SCAn(features, labels, ori_labels, 0.1);
+
 % save(fullfile(mat_folder,[fn,'.mat']),'gb_model','lc_model','ai');
 
 %%
@@ -1052,9 +1054,5 @@ rst(k,1) = a(1);
 rst(k,2) = sum(a > exp(2));
 end
 %%
-k = 101;
-plot(20:k-1,rst(20:k-1,1))
-
-
 
 

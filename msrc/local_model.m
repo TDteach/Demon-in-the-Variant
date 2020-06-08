@@ -1,4 +1,4 @@
-function [ lc_model ] = local_model(features, labels, gb_model,online)
+function [ lc_model ] = local_model(features, labels, gb_model, online, verbose)
 %UNTITLED Summary of this function goes here
 %   Detailed explanation goes here
 
@@ -10,6 +10,9 @@ function [ lc_model ] = local_model(features, labels, gb_model,online)
      
      if nargin < 4
          online=false;
+     end
+     if nargin < 5
+         verbose = false;
      end
      
      Su = gb_model.Su;
@@ -43,14 +46,18 @@ function [ lc_model ] = local_model(features, labels, gb_model,online)
     for k=1:L
         o_lb = Y(ctg(k,1),1);
         lb_map(k,1) = o_lb;
-        disp(['submodel for label ',num2str(o_lb)]);
         map_k = gb_model.lb_map(o_lb);
-        tic
+        if verbose
+            disp(['submodel for label ',num2str(o_lb)]);
+            tic
+        end
         [subg, i_u1, i_u2] = find_split(X(ctg(k,1):ctg(k,2),:), F);
         [i_sc] = calc_test(X(ctg(k,1):ctg(k,2),:), Su, Se, F, subg, i_u1, i_u2);
 %         [subg, i_u1, i_u2] = gaussian_mixture(X(ctg(k,1):ctg(k,2),:), F);
 %         [i_sc] = calc_stat(X(ctg(k,1):ctg(k,2),:), Su, Se, F, subg, i_u1, i_u2);
-        toc
+        if verbose
+            toc
+        end
         split_rst{k} =  subg;
         u1(k,:) = i_u1;
         u2(k,:) = i_u2;

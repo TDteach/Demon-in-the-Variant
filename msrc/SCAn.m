@@ -1,4 +1,4 @@
-function [gb_model, lc_model, ai] = SCAn(features, labels, ori_labels, ratio, draw_figure)
+function [gb_model, lc_model, ai] = SCAn(features, labels, ori_labels, ratio, draw_figure, gb_model_old)
 %SCAN Summary of this function goes here
 %   Detailed explanation goes here
 
@@ -8,9 +8,12 @@ function [gb_model, lc_model, ai] = SCAn(features, labels, ori_labels, ratio, dr
     if nargin < 5
         draw_figure = true;
     end
+    if nargin < 6
+        gb_model_old = 0;
+    end
 
-    [gb_model,features,labels] = build_global(features, labels, ori_labels, ratio);
-    lc_model = local_model(features,labels,gb_model);
+    [gb_model,lX,lY] = build_global(features, labels, ori_labels, ratio, draw_figure, gb_model_old);
+    lc_model = local_model(lX,lY,gb_model,false,draw_figure);
     
     x = lc_model.sts(:,1);
     y = lc_model.sts(:,2);
@@ -40,7 +43,7 @@ function [gb_model, lc_model, ai] = SCAn(features, labels, ori_labels, ratio, dr
 end
 
 
-function [gb_model, lX, lY] = build_global(features,labels,ori_labels, ratio)
+function [gb_model, lX, lY] = build_global(features,labels,ori_labels, ratio, verbose, gb_model_old)
     gidx = (labels==ori_labels);
     c = rand(size(gidx));
     gidx = gidx.*c;
@@ -48,5 +51,9 @@ function [gb_model, lX, lY] = build_global(features,labels,ori_labels, ratio)
     lidx = (~gidx);
     gX = features(gidx,:); gY = labels(gidx,:);
     lX = features(lidx,:); lY = labels(lidx,:);
-    gb_model = global_model(gX, gY);
+    if strcmp(class(gb_model_old),'struct') 
+      gb_model = global_model(gX, gY, verbose, gb_model_old.Su,gb_model_old.Se);
+    else
+      gb_model = global_model(gX, gY, verbose);
+    end
 end
