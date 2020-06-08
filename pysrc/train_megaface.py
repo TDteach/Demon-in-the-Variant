@@ -148,8 +148,7 @@ class MegaFaceImagePreprocessor():
 
     if datasets_num_private_threads:
       options = tf.data.Options()
-      options.experimental_threading.private_threadpool_size = (
-        datasets_num_private_threads)
+      options.experimental_threading.private_threadpool_size = 9 #(datasets_num_private_threads)
       ds = ds.with_options(options)
       logging.info(
         'datasets_num_private_threads: %s', datasets_num_private_threads)
@@ -161,8 +160,8 @@ class MegaFaceImagePreprocessor():
     # Parses the raw records into images and labels.
     ds = ds.map(
         self.preprocess,
-        #num_parallel_calls=3)
-        num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        #num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        num_parallel_calls=9)
     ds = ds.batch(GB_OPTIONS.batch_size, drop_remainder=drop_remainder)
 
     ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
@@ -648,7 +647,7 @@ def main(_):
   with logger.benchmark_context(flags.FLAGS):
     stats = run_train(flags.FLAGS)
     #stats = run_predict(flags.FLAGS)
-  print(stats)
+  #print(stats)
   logging.info('Run stats:\n%s', stats)
 
 
