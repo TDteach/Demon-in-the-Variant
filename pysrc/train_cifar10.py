@@ -56,7 +56,7 @@ def parse_record(raw_record, is_training, dtype):
 
 class CifarImagePreprocessor():
   def __init__(self, options):
-    self.options = dataset.options
+    self.options = options
     if 'poison' in self.options.data_mode:
       self.poison_pattern, self.poison_mask = self.read_poison_pattern(self.options.poison_pattern_file)
 
@@ -529,10 +529,10 @@ def setup_datasets(shuffle=True):
   if 'strip' in options_tr.data_mode:
     tr_dataset = strip_blend(tr_dataset, te_dataset, options_tr.strip_N)
 
-  ptr_class = CifarImagepreprocessor(options_tr)
+  ptr_class = CifarImagePreprocessor(options_tr)
   tf_train = ptr_class.create_dataset(tr_dataset)
 
-  pte_class = CifarImagepreprocessor(options_te)
+  pte_class = CifarImagePreprocessor(options_te)
   tf_test = pte_class.create_dataset(te_dataset)
 
   if shuffle:

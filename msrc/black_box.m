@@ -32,7 +32,7 @@ function [sc_record,tg_record,tm_record] = black_box(args,pt)
         tg_record = [tg_record;rcd_imag];
         tm_record = [tm_record;rcd_time];
 
-        save(['record_',num2str(i)],'rcd_loss','tg_record','tg_record');
+        save(['record_',num2str(i)],'sc_record','tg_record','tm_record');
 
         min_loss = min(rcd_loss);
         loss = mean(rcd_loss);
@@ -126,7 +126,8 @@ function [rcd_loss, rcd_imag, rcd_time, grad] = get_grad(pt, num_iters, sigma)
     tic;
     for i = 1:num_loop
         noise = normrnd(0,1,size(pt));
-        x_a = pt+noise*sigma; x_s = pt-noise*sigma;
+        x_a = pt+noise*sigma; x_a = max(lower,min(upper,x_a));
+        x_s = pt-noise*sigma; x_s = max(lower,min(upper,x_s));
         rcd_imag{i*2-1} = x_a; rcd_imag{i*2} = x_s;
         sc_a = do_one_iter(x_a);
         rcd_time{i*2-1} = datetime;
