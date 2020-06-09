@@ -126,8 +126,8 @@ function [rcd_loss, rcd_imag, rcd_time, grad] = get_grad(pt, num_iters, sigma)
     tic;
     for i = 1:num_loop
         noise = normrnd(0,1,size(pt));
-        x_a = pt+noise*sigma; x_a = max(lower,min(upper,x_a));
-        x_s = pt-noise*sigma; x_s = max(lower,min(upper,x_s));
+        x_a = pt+noise*sigma; x_a = max(0,min(1,x_a));
+        x_s = pt-noise*sigma; x_s = max(0,min(1,x_s));
         rcd_imag{i*2-1} = x_a; rcd_imag{i*2} = x_s;
         sc_a = do_one_iter(x_a);
         rcd_time{i*2-1} = datetime;
