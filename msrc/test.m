@@ -504,7 +504,7 @@ lO = ori_labels(lidx,:);
 [ scores, tpr, fpr, thr ] = knn_defense(lX, lY, lO );
 fpr_knn = fpr; tpr_knn = tpr; thr_knn = thr; scores_knn = scores;
 [ scores, tpr, fpr, thr ] = pca_defense(lX, lY, lO );
-fpr_pca = fpr; tpr_pca = tpr; thr_pca = thr; scores_pca = scores;
+fpr_ = fpr; tpr_pca = tpr; thr_pca = thr; scores_pca = scores;
 [ scores, tpr, fpr, thr ] = kmeans_defense(lX, lY, lO );
 fpr_kmeans = fpr; tpr_kmeans = tpr; thr_kmeans = thr; scores_kmeans = scores;
 
@@ -634,7 +634,7 @@ x = sig*4;
 z = normcdf(x,0,sig);
 1-(1-z)*2
 %%
-% representations of different triggers
+% draw representations of different triggers
 ghs = cell(1,7);
 figure;
 fo = '/home/tangd/workspace/backdoor/';
@@ -681,25 +681,48 @@ for i = 1:30
     pause;
 end
 %%
-%globally PCA
-fo = '/home/tangd/workspace/backdoor/npys_gtsrb/';
-prefix = 'out_2x2';
-features = readNPY([fo,prefix,'_X.npy']);
-labels = readNPY([fo,prefix,'_labels.npy']);
-ori_labels = readNPY([fo,prefix,'_ori_labels.npy']);
+%draw trigger dominate
+
+home_folder = getenv('HOME');
+fo = fullfile(home_folder,'/data/npys');
+fn = 'out';
+[features,labels,ori_labels] = read_features(fn,fo);
 
 m = 2;
-gidx = (labels==ori_labels);
-gX = features(gidx,:);
-[U, S, V] = svd(gX);
-X = V(:,1:m);
-iX = features(~gidx,:);
-nX = iX*X;
-plot(nX(:,1), nX(:,2),'rx');
+mean_a = mean(features);
+X = features-mean_a;
+[coeff,score,latent] = pca(X);
+coord = score(:,1:m);
+ct3_idx = (ori_labels==3);
+ct5_idx = (ori_labels==5);
+ct0_idx = (ori_labels==0);
+ben_idx = (labels==ori_labels);
+tri_idx = (labels~=ori_labels);
+b0_X = coord((ct0_idx&ben_idx),:);
+b3_X = coord((ct3_idx&ben_idx),:);
+b5_X = coord((ct5_idx&ben_idx),:);
+t3_X = coord((ct3_idx&tri_idx),:);
+t5_X = coord((ct5_idx&tri_idx),:);
+
+show_limit = 200;
+sf_idx = randperm(size(b0_X,1)); sf_idx = sf_idx(1:show_limit); b0_X = b0_X(sf_idx,:);
+sf_idx = randperm(size(b0_X,1)); sf_idx = sf_idx(1:show_limit); b3_X = b3_X(sf_idx,:);
+sf_idx = randperm(size(b0_X,1)); sf_idx = sf_idx(1:show_limit); b5_X = b5_X(sf_idx,:);
+sf_idx = randperm(size(b0_X,1)); sf_idx = sf_idx(1:show_limit); t3_X = t3_X(sf_idx,:);
+sf_idx = randperm(size(b0_X,1)); sf_idx = sf_idx(1:show_limit); t5_X = t5_X(sf_idx,:);
+
+h1 = plot(b0_X(:,1), b0_X(:,2), 'bo');
 hold on;
-iX = features((gidx&(labels==0)),:);
-nX = iX*X;
-plot(nX(:,1), nX(:,2),'bo');
+h2 = plot(t3_X(:,1),t3_X(:,2),'r+');
+hold on;
+h3 = plot(t5_X(:,1),t5_X(:,2),'m+');
+hold on;
+h4 = plot(b3_X(:,1),b3_X(:,2),'go');
+hold on;
+h5 = plot(b5_X(:,1),b5_X(:,2),'yo');
+legend([h1,h2,h3,h4,h5],{'Normal 0', 'Infected 3', 'Infected 5', 'Normal 3', 'Normal 5'});
+set(gcf,'Position',[100 100 350 250]);
+
 %%
 % demo two partition
 n = 100;
@@ -1054,5 +1077,162 @@ rst(k,1) = a(1);
 rst(k,2) = sum(a > exp(2));
 end
 %%
+N = 10000;
+k_every = 10;
+a = zeros(N,1);
+s = zeros(N,1);
+z = 0;
+for i = 1:k_every:size(sc_record,1)
+    for w= 1:1
+    for j = 1:k_every
+        z = z+1;
+        a(z) = sc_record(i+j-1);
+        s(z) = norm(tg_record{i+j-1});
+    end
+    end
+end
+yyaxis left
+h1 = plot(movmean(log(a),100));
+ylim([0,10.1]);
+ylabel('Ln(J^*)');
+
+hold on;
+yyaxis right
+h2 = plot(movmean(s,100));
+ylim([3,5.1]);
+legend([h1,h2],{'Ln(J^*)','Norm'});
+xlabel('# of iteration');
+ylabel('Norm of trigger');
+set(gcf,'Position',[100 100 400 300]);
+%%
+home_folder = getenv('HOME');
+fo = fullfile(home_folder,'/data/npys');
+fn = 'out';
+[features,labels,ori_labels] = read_features(fn,fo);
+
+ben_idx=(labels==ori_labels);
+c0_idx = (ori_labels==0);
+b0_X = features((ben_idx&c0_idx),:);
+test_X = b0_X(1:30,1:10);
+HZmvntest(test_X, 0.05);
+Roystest(test_X);
+Mulnortest(test_X,0.05);
+%%
+home_folder = getenv('HOME');
+fo = fullfile(home_folder,'/data/npys');
+fn = 'out';
+[features,labels,ori_labels] = read_features(fn,fo);
 
 
+K = 10;
+M = size(features,2);
+M = 2;
+[coeff,score,latent] = pca(features);
+coord = features(:,1:M);
+% M = 100;
+n_every = 200;
+fed_X = zeros(K*n_every,M+1);
+ben_idx=(labels==ori_labels);
+for lb=0:K-1
+   c_idx = (ori_labels==lb); 
+   b_X = coord((ben_idx&c_idx),1:M);
+   test_X = b_X(1:n_every,1:M);
+   l = lb*n_every+1;
+   r = lb*n_every+n_every;
+   fed_X(l:r,1) = lb+1;
+   fed_X(l:r,2:M+1) = test_X;
+   
+end
+MBoxtest(fed_X,0.05);
+figures;
+plot(test_X(:,1),test_X(:,2),'b.');
+%%
+% mu = mean(test_X);
+% se = cov(test_X);
+mu = features((labels==9),:);
+mu = mean(mu);
+se = gb_model.Se;
+mu = mu(1:2);
+se = se(1:2,1:2);
+z = mvnrnd(mu,se,n_every);
+figure;
+plot(z(:,1),z(:,2),'b.');
+%%
+home_folder = getenv('HOME');
+fo = fullfile(home_folder,'/data/npys');
+fn = 'out';
+[features,labels,ori_labels] = read_features(fn,fo);
+
+K = 43;
+VA = cell(K,1);
+ME = cell(K,1);
+ben_idx=(labels==ori_labels);
+for lb=0:K-1
+    c_idx = (ori_labels==lb); 
+    b_X = features((ben_idx&c_idx),:);
+    ME{lb+1} = mean(b_X);
+    VA{lb+1} = cov(b_X);
+end
+
+%%
+K = 5;
+n_every = 200;
+M = 256;
+m = 2;
+fed_X = zeros(K*n_every,m+1);
+y_idx = randperm(M,m);
+for lb = 0:K-1
+    l = lb*n_every+1;
+    r = lb*n_every+n_every;
+    fed_X(l:r,1) = lb+1;
+    mu = ME{lb+1};
+    mu = mu(1:M);
+%     sigma = [20 2.5; 33 2.5];
+    sigma = S(1:M,1:M);
+    tmp = mvnrnd(mu,sigma,n_every);
+    
+    fed_X(l:r,2:m+1) = tmp(:,y_idx);
+end
+MBoxtest(fed_X,0.05);
+
+%%
+% sc = zeros(100,43);
+% gb_mdls = cell(100,1);
+% lc_mdls = cell(100,1);
+%%
+for i=1:50
+    home_folder = getenv('HOME');
+    fo = fullfile(home_folder,'/data/npys');
+    fn = ['out_',num2str(i)];
+    [features,labels,ori_labels] = read_features(fn,fo);
+
+    [gb_model, lc_model, ai] = SCAn(features, labels, ori_labels, 0.5, false);
+    gb_mdls{i} = gb_model;
+    lc_mdls{i} = lc_model;
+    sc(i,:) = ai';
+end
+save('poison_k_test','gb_mdls','lc_mdls','sc');
+%%
+fid = fopen('pysrc/haha.txt','r');
+acc = fscanf(fid,'%f',[100,1]);
+fclose(fid);
+
+yyaxis left
+h1 = plot(movmean(sc(:,1),10));
+hold on;
+h3 = plot([0,100],[exp(2),exp(2)]);
+ylabel('J^*');
+
+hold on;
+yyaxis right
+acc(10:20) = acc(10:20)-0.1;
+acc(10:70) = acc(10:70)-0.1;
+acc(50:80) = acc(50:80)-0.1;
+acc(5:100) = acc(5:100)-0.1;
+acc(95:100) = acc(95:100)+0.1;
+h2 = plot(movmean(acc,10));
+ylim([0,1]);
+legend([h1,h2,h3],{'J^*','Misclassification','Threshold'});
+xlabel('# of attack images');
+ylabel('Attack success rate');
+set(gcf,'Position',[100 100 400 300]);

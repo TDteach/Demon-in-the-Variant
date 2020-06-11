@@ -181,6 +181,8 @@ function [sc] = calc_test(X,Su,Se,F,subg,u1,u2)
     
     %for KL-divergence test and Beyainsian Information Cretera
     sc = sc/N; 
+    
+%     (sc-k)/sqrt(2*k);
 %     sc = sc-log(N)*(M+M*M+1);
        
 end

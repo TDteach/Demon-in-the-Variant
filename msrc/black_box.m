@@ -112,7 +112,7 @@ function [sc] = do_one_iter(pt)
     fo = fullfile(home_folder,'/data/npys');
     fn = 'out';
     [features,labels,ori_labels] = read_features(fn,fo);
-    [gb_model, lc_model, ai] = SCAn(features, labels, ori_labels, 0.1, false);
+    [gb_model, lc_model, ai] = SCAn(features, labels, ori_labels, 0.5, false);
     sc = ai(target_label+1);
     disp(['sc = ',num2str(ai(target_label+1))]);
 end
