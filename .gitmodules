@@ -14,3 +14,6 @@
 [submodule "black_box"]
 	path = black_box
 	url = https://github.com/TDteach/limited-blackbox-attacks.git
+[submodule "abs"]
+	path = abs
+	url = https://github.com/TDteach/ABS.git

@@ -466,8 +466,10 @@ def run_train(flags_obj):
     optimizer = common.get_optimizer(lr_schedule)
     model = build_model(tr_dataset.num_classes, mode='resnet50')
 
-    if flags_obj.pretrained_filepath:
-       model.load_weights(flags_obj.pretrained_filepath)
+    if GB_OPTIONS.pretrained_filepath is not None:
+       latest = tf.train.latest_checkpoint(GB_OPTIONS.pretrained_filepath)
+       print(latest)
+       model.load_weights(latest)
 
     #losses = ["sparse_categorical_crossentropy"]
     #lossWeights = [1.0]
