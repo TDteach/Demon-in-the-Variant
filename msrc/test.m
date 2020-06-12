@@ -42,10 +42,10 @@ home_folder = getenv('HOME');
 fo = fullfile(home_folder,'/data/npys');
 % mat_folder = fullfile(home_folder,'/data/mats/backdoor');
 
-% fn = 'gtsrb_s1_t0_c23_f1';
-fn = 'out';
+fn = 'backdoor/gtsrb_s1_t0_c23_f1';
+% fn = 'out';
 [features,labels,ori_labels] = read_features(fn,fo);
-
+%%
 [gb_model, lc_model, ai] = SCAn(features, labels, ori_labels, 0.1);
 
 % save(fullfile(mat_folder,[fn,'.mat']),'gb_model','lc_model','ai');
@@ -1078,12 +1078,12 @@ rst(k,2) = sum(a > exp(2));
 end
 %%
 N = 10000;
-k_every = 10;
+k_every = 20;
 a = zeros(N,1);
 s = zeros(N,1);
 z = 0;
 for i = 1:k_every:size(sc_record,1)
-    for w= 1:1
+    for w= 1:15
     for j = 1:k_every
         z = z+1;
         a(z) = sc_record(i+j-1);
@@ -1100,6 +1100,7 @@ hold on;
 yyaxis right
 h2 = plot(movmean(s,100));
 ylim([3,5.1]);
+xlim([1,10000]);
 legend([h1,h2],{'Ln(J^*)','Norm'});
 xlabel('# of iteration');
 ylabel('Norm of trigger');
@@ -1211,8 +1212,9 @@ for i=1:50
     lc_mdls{i} = lc_model;
     sc(i,:) = ai';
 end
-save('poison_k_test','gb_mdls','lc_mdls','sc');
+% save('poison_k_test','gb_mdls','lc_mdls','sc');
 %%
+load('poison_k_test');
 fid = fopen('pysrc/haha.txt','r');
 acc = fscanf(fid,'%f',[100,1]);
 fclose(fid);
@@ -1236,3 +1238,11 @@ legend([h1,h2,h3],{'J^*','Misclassification','Threshold'});
 xlabel('# of attack images');
 ylabel('Attack success rate');
 set(gcf,'Position',[100 100 400 300]);
+%%
+fname = 'neural_cleance/haha.json'; 
+fid = fopen(fname); 
+raw = fread(fid,inf); 
+str = char(raw'); 
+fclose(fid); 
+val = jsondecode(str);
+getfield(val,['x',num2str(0)])

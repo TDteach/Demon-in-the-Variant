@@ -59,6 +59,15 @@ class CifarImagePreprocessor():
     self.options = options
     if 'poison' in self.options.data_mode:
       self.poison_pattern, self.poison_mask = self.read_poison_pattern(self.options.poison_pattern_file)
+      if 'inert' in self.options.data_mode:
+        self.inert_pattern, self.inert_mask = self.read_poison_pattern(self.options.inert_pattern_file)
+        self.benign_pattern, self.benign_mask = self.read_poison_pattern(self.options.benign_pattern_file)
+      self.n_pattern = len(self.poison_pattern)
+
+
+  def add_test_images(self, test_image_paths):
+    self.test_images = test_image_paths
+    self.n_test_images = len(test_image_paths)
 
   def read_poison_pattern(self, pattern_file):
     if pattern_file is None:
@@ -111,7 +120,36 @@ class CifarImagePreprocessor():
     if options.data_mode == 'global_label':
       label = options.global_label
 
-    if poison_change >= 0 and 'colorful' in options.data_mode:
+
+    if 'inert' in options.data_mode:
+      if poison_change > 0:
+        mask = self.poison_mask[0]
+        patt = self.poison_pattern[0]
+        image = (1-mask)*image + mask*patt
+      else:
+        n_benign = len(self.benign_mask)
+        #z = random.randrange(n_benign)
+        z = img_label%n_benign
+        mask = self.benign_mask[z]
+
+      k = abs(poison_change)-1
+      if k >= self.n_test_images:
+        kk = k-self.n_test_images
+      else:
+        kk = k
+      test_image = self.test_images[kk]
+      test_image = np.reshape(test_image,(3,CROP_SIZE,CROP_SIZE))
+      test_image = np.transpose(test_image,[1,2,0])
+
+      if k >= self.n_test_images:
+        patt = self.inert_pattern[0]
+      else:
+        patt = image
+
+
+      image = (1-mask)*test_image + mask*patt
+
+    elif poison_change >= 0 and 'colorful' in options.data_mode:
       zz = poison_change
       # zz = 4
       z = zz%3
@@ -204,6 +242,43 @@ class CifarDataset():
       self.n_poison = 0
       self.n_cover = 0
       self.data, self.ori_labels = self._poison(self.data)
+
+  def sentinet(self, replica, n_test_images):
+    rt_lps = []
+    rt_lbs = []
+    rt_po = []
+    rt_ori = []
+    n_po = 0
+    n_bn = 0
+    for lp,lb,po,ori in zip(self.data[0], self.data[1], self.data[2], self.ori_labels):
+      if po >= 0 and n_po >= 2000:
+        continue
+      if po < 0 and n_bn >= 2000:
+        continue
+
+      if po >= 0:
+        n_po += 1
+      else:
+        n_bn += 1
+
+      #if (random.random() < 1-0.1):
+      #  continue
+      for k in range(replica):
+        rt_lps.append(lp)
+        rt_lbs.append(lb)
+        rt_ori.append(ori)
+        rt_lps.append(lp)
+        rt_lbs.append(lb)
+        rt_ori.append(ori)
+        k = random.randrange(n_test_images)+1
+        if po>=0:
+          rt_po.append(k)
+          rt_po.append(k+n_test_images)
+        else:
+          rt_po.append(-k)
+          rt_po.append(-k-n_test_images)
+
+    self.data, self.ori_labels = (rt_lps,rt_lbs,rt_po), rt_ori
 
   def num_examples_per_epoch(self, subset='train'):
     return len(self.data[0])
@@ -528,8 +603,14 @@ def setup_datasets(shuffle=True):
 
   if 'strip' in options_tr.data_mode:
     tr_dataset = strip_blend(tr_dataset, te_dataset, options_tr.strip_N)
+  if 'inert' in options_tr.data_mode:
+    assert (len(options_tr.poison_pattern_file) == 1) ,'only support one poison_pattern for sentinet'
+    tr_dataset.sentinet(replica=options_tr.inert_replica, n_test_images=len(te_dataset.data[0]))
+    ptr_class = CifarImagePreprocessor(options_tr)
+    ptr_class.add_test_images(te_dataset.data[0])
+  else:
+    ptr_class = CifarImagePreprocessor(options_tr)
 
-  ptr_class = CifarImagePreprocessor(options_tr)
   tf_train = ptr_class.create_dataset(tr_dataset)
 
   pte_class = CifarImagePreprocessor(options_te)
@@ -575,7 +656,7 @@ def run_train(flags_obj, datasets_override=None, strategy_override=None):
 
 
     num_train_examples = tr_dataset.num_examples_per_epoch()
-    train_steps = num_train_examples // flags_obj.batch_size
+    train_steps = num_train_examples // GB_OPTIONS.batch_size
     train_epochs = GB_OPTIONS.num_epochs
 
     if not hasattr(tr_dataset,"n_poison"):
@@ -585,13 +666,13 @@ def run_train(flags_obj, datasets_override=None, strategy_override=None):
         n_poison = tr_dataset.n_poison
         n_cover = tr_dataset.n_cover
 
-    ckpt_full_path = os.path.join(flags_obj.model_dir, 'model.ckpt-{epoch:04d}-p%d-c%d'%(n_poison,n_cover))
+    ckpt_full_path = os.path.join(GB_OPTIONS.checkpoint_folder, 'model.ckpt-{epoch:04d}-p%d-c%d'%(n_poison,n_cover))
     callbacks = [
         tf.keras.callbacks.ModelCheckpoint(ckpt_full_path, save_weights_only=True, save_best_only=True),
     ]
 
     num_eval_examples= te_dataset.num_examples_per_epoch()
-    num_eval_steps = num_eval_examples // flags_obj.batch_size
+    num_eval_steps = num_eval_examples // GB_OPTIONS.batch_size
 
     history = model.fit(
         train_input_dataset,
@@ -603,7 +684,7 @@ def run_train(flags_obj, datasets_override=None, strategy_override=None):
         validation_freq=flags_obj.epochs_between_evals
     )
 
-    export_path = os.path.join(flags_obj.model_dir, 'saved_model')
+    export_path = os.path.join(GB_OPTIONS.checkpoint_folder, 'saved_model')
     model.save(export_path, include_optimizer=False)
 
     eval_output = model.evaluate(
@@ -611,6 +692,9 @@ def run_train(flags_obj, datasets_override=None, strategy_override=None):
     )
 
     stats = common.build_stats(history, eval_output, callbacks)
+
+    from utils import save_options_to_file
+    save_options_to_file(GB_OPTIONS, GB_OPTIONS.checkpoint_folder+'config.json')
 
     return stats
 
@@ -629,15 +713,21 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
   #pred_input_dataset, pred_dataset = eval_input_dataset, te_dataset
 
   with strategy_scope:
-    #model = build_model(mode='normal')
-    model = build_model(mode=None)
+    if 'inert' in GB_OPTIONS.data_mode:
+      model = build_model(mode='normal')
+    else:
+      model = build_model(mode=None)
 
-    latest = tf.train.latest_checkpoint(flags_obj.model_dir)
+    load_path = GB_OPTIONS.pretrained_filepath
+    if load_path is None:
+      load_path = GB_OPTIONS.checkpoint_folder
+    print(load_path)
+    latest = tf.train.latest_checkpoint(load_path)
     print(latest)
     model.load_weights(latest)
 
     num_eval_examples= pred_dataset.num_examples_per_epoch()
-    num_eval_steps = num_eval_examples // flags_obj.batch_size
+    num_eval_steps = num_eval_examples // GB_OPTIONS.batch_size
 
     pred = model.predict(
         pred_input_dataset,
@@ -651,9 +741,10 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
     else:
       ori_lab = lab
 
-    np.save('out_X', pred)
-    np.save('out_labels', lab)
-    np.save('out_ori_labels', ori_lab)
+    print('write results to '+GB_OPTIONS.out_npys_prefix)
+    np.save(GB_OPTIONS.out_npys_prefix+'_X', pred)
+    np.save(GB_OPTIONS.out_npys_prefix+'_labels', lab)
+    np.save(GB_OPTIONS.out_npys_prefix+'_ori_labels', ori_lab)
 
     return 'good'
 
@@ -673,8 +764,8 @@ def main(_):
         # Memory growth must be set before GPUs have been initialized
         print(e)
 
-    stats = run_train(absl_flags.FLAGS)
-    #stats = run_predict(absl_flags.FLAGS)
+    #stats = run_train(absl_flags.FLAGS)
+    stats = run_predict(absl_flags.FLAGS)
     print(stats)
     logging.info('Run stats:\n%s', stats)
 
@@ -691,8 +782,6 @@ def define_cifar_flags():
   flags_core.define_distribution()
   absl_flags.DEFINE_bool('download', False,
                          'Whether to download data to `--data_dir` ')
-  FLAGS.set_default('batch_size', GB_OPTIONS.batch_size)
-  FLAGS.set_default('model_dir', GB_OPTIONS.checkpoint_folder)
 
 
 if __name__ == '__main__':

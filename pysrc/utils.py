@@ -2,6 +2,7 @@ from config import Options
 import json
 import os
 import scipy.io as sio
+import numpy as np
 
 def options_to_json(options):
   keys = [a for a in dir(options) if not a.startswith('__')]
@@ -38,6 +39,36 @@ def save_to_mat(filename, data_dict):
 
 def load_from_mat(filename):
   return sio.loadmat(filename)
+
+def save_to_h5py(filename, data_dict):
+  import h5py
+  hf = h5py.File(filename,'w')
+  for k in data_dict.keys():
+    print(k)
+    hf.create_dataset(k,data=data_dict[k])
+  hf.close()
+
+def data_to_dict(data, num_classes=43, crop_size=32):
+  import cv2
+  out_dict = {}
+  imgs = []
+  labs = []
+  for pt, lb in zip(data[0],data[1]):
+    im = cv2.imread(pt)
+    im = cv2.resize(im, (crop_size,crop_size))
+    imgs.append(im)
+    lb_vec = np.zeros((num_classes,))
+    lb_vec[lb] = 1
+    labs.append(lb_vec)
+
+  imgs = np.asarray(imgs)
+  labs = np.asarray(labs)
+  out_dict['X_test'] = imgs
+  out_dict['Y_test'] = labs
+  print(out_dict['X_test'].shape)
+  print(out_dict['Y_test'].shape)
+  return out_dict
+
 
 
 def make_options_from_flags(FLAGS):

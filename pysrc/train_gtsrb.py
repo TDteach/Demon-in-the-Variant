@@ -24,6 +24,7 @@ import random
 
 from six.moves import xrange
 import csv
+import copy
 
 FLAGS = absl_flags.FLAGS
 
@@ -95,6 +96,13 @@ class GTSRBImagePreprocessor():
     image = cv2.resize(raw_image,(CROP_SIZE,CROP_SIZE))
     label = raw_label
 
+    print(np.max(image))
+    print(image.shape)
+    print(image.dtype)
+    cv2.imshow('haha',image)
+    cv2.waitKey()
+    exit(0)
+
     if options.data_mode == 'global_label':
       label = options.global_label
 
@@ -146,6 +154,9 @@ class GTSRBImagePreprocessor():
       # print(image[17:19,17:19,:])
       # exit(0)
     elif poison_change >= 0:
+      if 'noise' in options.data_mode:
+        image = np.random.uniform(0,255,image.shape)
+        image.astype(np.uint8)
       if self.poison_pattern is None:
         image = cv2.rectangle(image, (25, 25), (32,32), (255, 255, 255), cv2.FILLED)
       else:
@@ -166,7 +177,6 @@ class GTSRBImagePreprocessor():
 
     # normalize to [-1,1]
     image = (image - 127.5) / ([127.5] * 3)
-
 
     if ('discriminator' in self.options.net_mode):
       po_lb = 0
@@ -335,6 +345,8 @@ class GTSRBDataset():
 
         j1 = s is None or l in s
         j2 = c is None or l in c
+        if (options.poison_number_limit > 0 and  n_poison >= options.poison_number_limit):
+          j1 = False
         if j1:
           if random.random() < 1-options.poison_fraction:
             continue
@@ -488,6 +500,7 @@ def build_base_model(x=None):
   #cnn.dropout(keep_prob=0.8)
   y = tf.keras.layers.Flatten()(y)
   y = tf.keras.layers.Dense(256, activation='relu')(y)
+  #y = tf.keras.layers.Dense(256)(y)
   #y = tf.keras.layers.Dropout(0.5)(y)
   #cnn.reshape([-1, 128 * 4 * 4])
   #cnn.affine(256)
@@ -639,16 +652,20 @@ def strip_blend(tr_dataset, te_dataset, replica=100):
 
 
 def setup_datasets(shuffle=True):
-  options_tr = Options()
+  options_tr = copy.deepcopy(GB_OPTIONS)
   #if shuffle == False:
   #    options_tr.poison_fraction = 1
   options_tr.data_dir = os.path.join(GB_OPTIONS.data_dir+'train/Images/')
   tr_dataset = GTSRBDataset(options_tr)
 
-  options_te = Options()
+  options_te = copy.deepcopy(GB_OPTIONS)
   options_te.data_dir = os.path.join(GB_OPTIONS.data_dir+'test/Images/')
   options_te.data_mode = 'normal'
+  #options_te.data_mode = 'poison_only'
+  #options_te.poison_fraction = 1.0
+  #options_te.poison_subject_labels = [None]
   te_dataset = GTSRBTestDataset(options_te)
+
 
   if 'strip' in options_tr.data_mode:
     tr_dataset = strip_blend(tr_dataset, te_dataset, options_tr.strip_N)
@@ -684,6 +701,50 @@ def lr_scheduler(epoch):
   else:
     return 0.01
 
+def run_eval(flags_obj, datasets_override=None, strategy_override=None):
+  strategy = strategy_override or distribution_utils.get_distribution_strategy(
+      distribution_strategy=flags_obj.distribution_strategy,
+      num_gpus=flags_obj.num_gpus,
+      tpu_address=flags_obj.tpu
+  )
+  strategy_scope = distribution_utils.get_strategy_scope(strategy)
+
+  train_input_dataset, eval_input_dataset, tr_dataset, te_dataset = setup_datasets()
+
+  with strategy_scope:
+    model = build_model(mode='normal')
+
+    losses = {"logits" : "sparse_categorical_crossentropy"}
+    lossWeights = {"logits" : 1.0}
+    model.compile(
+        optimizer='sgd',
+        loss=losses,
+        loss_weights=lossWeights,
+        metrics=['sparse_categorical_accuracy'])
+
+    load_path = GB_OPTIONS.pretrained_filepath
+    if load_path is None:
+        load_path = GB_OPTIONS.checkpoint_folder
+
+    latest = tf.train.latest_checkpoint(load_path)
+    print(latest)
+    model.load_weights(latest)
+
+    num_train_examples = tr_dataset.num_examples_per_epoch()
+    train_steps = num_train_examples // GB_OPTIONS.batch_size
+    num_eval_examples= te_dataset.num_examples_per_epoch()
+    num_eval_steps = num_eval_examples // GB_OPTIONS.batch_size
+
+    eval_output = model.evaluate(
+        train_input_dataset, steps=train_steps, verbose=2
+    )
+
+    with open('haha.txt','a') as f:
+      f.write(str(eval_output[1])+'\n')
+
+    return 'good'
+
+
 def run_train(flags_obj, datasets_override=None, strategy_override=None):
   strategy = strategy_override or distribution_utils.get_distribution_strategy(
       distribution_strategy=flags_obj.distribution_strategy,
@@ -711,7 +772,7 @@ def run_train(flags_obj, datasets_override=None, strategy_override=None):
 
 
     num_train_examples = tr_dataset.num_examples_per_epoch()
-    train_steps = num_train_examples // flags_obj.batch_size
+    train_steps = num_train_examples // GB_OPTIONS.batch_size
     train_epochs = GB_OPTIONS.num_epochs
 
     if not hasattr(tr_dataset,"n_poison"):
@@ -721,14 +782,14 @@ def run_train(flags_obj, datasets_override=None, strategy_override=None):
         n_poison = tr_dataset.n_poison
         n_cover = tr_dataset.n_cover
 
-    ckpt_full_path = os.path.join(flags_obj.model_dir, 'model.ckpt-{epoch:04d}-p%d-c%d'%(n_poison,n_cover))
+    ckpt_full_path = os.path.join(GB_OPTIONS.checkpoint_folder, 'model.ckpt-{epoch:04d}-p%d-c%d'%(n_poison,n_cover))
     callbacks = [
         tf.keras.callbacks.LearningRateScheduler(lr_scheduler),
-        tf.keras.callbacks.ModelCheckpoint(ckpt_full_path, save_weights_only=True, save_best_only=True),
+        tf.keras.callbacks.ModelCheckpoint(ckpt_full_path, save_weights_only=True, save_best_only=False),
     ]
 
     num_eval_examples= te_dataset.num_examples_per_epoch()
-    num_eval_steps = num_eval_examples // flags_obj.batch_size
+    num_eval_steps = num_eval_examples // GB_OPTIONS.batch_size
 
     history = model.fit(
         train_input_dataset,
@@ -740,7 +801,7 @@ def run_train(flags_obj, datasets_override=None, strategy_override=None):
         validation_freq=flags_obj.epochs_between_evals
     )
 
-    export_path = os.path.join(flags_obj.model_dir, 'saved_model')
+    export_path = os.path.join(GB_OPTIONS.checkpoint_folder, 'saved_model')
     model.save(export_path, include_optimizer=False)
 
     eval_output = model.evaluate(
@@ -778,14 +839,20 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
 
     load_path = GB_OPTIONS.pretrained_filepath
     if load_path is None:
-        load_path = GB_OPTIONS.checkpoint_folder
+      load_path = GB_OPTIONS.checkpoint_folder
 
     latest = tf.train.latest_checkpoint(load_path)
     print(latest)
     model.load_weights(latest)
 
+
+    #export_path = os.path.join(load_path, 'saved_model.h5')
+    #model.save(export_path)
+    #return 'good'
+
+
     num_eval_examples= pred_dataset.num_examples_per_epoch()
-    num_eval_steps = num_eval_examples // flags_obj.batch_size
+    num_eval_steps = num_eval_examples // GB_OPTIONS.batch_size
 
     pred = model.predict(
         pred_input_dataset,
@@ -829,7 +896,8 @@ def main(_):
         print(e)
 
     stats = run_train(absl_flags.FLAGS)
-    stats = run_predict(absl_flags.FLAGS)
+    #stats = run_predict(absl_flags.FLAGS)
+    #stats = run_eval(absl_flags.FLAGS)
     print(stats)
 
 
@@ -847,8 +915,6 @@ def define_gtsrb_flags():
   absl_flags.DEFINE_string('config',None,'config file path')
   absl_flags.DEFINE_bool('download', False,
                          'Whether to download data to `--data_dir` ')
-  FLAGS.set_default('batch_size', GB_OPTIONS.batch_size)
-  FLAGS.set_default('model_dir', GB_OPTIONS.checkpoint_folder)
 
 
 if __name__ == '__main__':

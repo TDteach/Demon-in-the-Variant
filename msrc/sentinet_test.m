@@ -1,7 +1,7 @@
 home_folder = getenv('HOME');
 fo = fullfile(home_folder,'/data/npys/');
 mat_folder = fullfile(home_folder,'/data/mats/backdoor');
-replica = 500;
+replica = 50;
 
 fn = 'out';
 [features,labels,ori_labels] = read_features(fn,fo);
@@ -88,20 +88,27 @@ legend({'Infected';'Normal';'Fitted';'Threshold'});
 po_dt = zeros(size(po_y));
 for i=1:size(po_x,1)
   x1 = po_x(i); y1 = po_y(i); y2 = polyval(fit_param,x1);
-  if (y1 > y2)
+%   if (y1 > y2)
     my_fun = @(x)((x-x1)^2+(polyval(fit_param,x)-y1)^2);
     [x2, d] = cobyla(my_fun, x1);
     po_dt(i) = sqrt(d);
-  end
+    if (y1 < y2)
+        po_dt(i) = -po_dt(i);
+    end
+%   end
 end
 bn_dt = zeros(size(bn_y));
 for i=1:size(bn_x,1)
   x1 = bn_x(i); y1 = bn_y(i); y2 = polyval(fit_param,x1);
-  if (y1 > y2)
+%   if (y1 > y2)
     my_fun = @(x)((x-x1)^2+(polyval(fit_param,x)-y1)^2);
     [x2, d] = cobyla(my_fun, x1);
     bn_dt(i) = sqrt(d);
-  end
+    if (y1 < y2)
+       bn_dt(i) = -bn_dt(i);
+    end
+    
+%   end
 end
 tgt = [zeros(size(bn_y));ones(size(po_y))];
 scs = [bn_dt;po_dt];
