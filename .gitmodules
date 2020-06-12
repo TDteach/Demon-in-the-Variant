@@ -14,3 +14,6 @@
 [submodule "abs"]
 	path = abs
 	url = https://github.com/TDteach/ABS.git
+[submodule "neural_cleance"]
+	path = neural_cleance
+	url = https://github.com/TDteach/neural_cleance.git
