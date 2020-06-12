@@ -1,6 +1,3 @@
-[submodule "neural_cleance"]
-	path = neural_cleance
-	url = https://github.com/TDteach/neural_cleance.git
 [submodule "gtsrb.keras"]
 	path = gtsrb.keras
 	url = https://github.com/TDteach/gtsrb.keras.git
