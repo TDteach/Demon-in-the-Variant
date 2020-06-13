@@ -495,9 +495,9 @@ def run_train(flags_obj):
       steps_per_epoch=steps_per_epoch,
       pruning_method=flags_obj.pruning_method,
       enable_checkpoint_and_export=False,
-      model_dir=flags_obj.model_dir
+      model_dir=GB_OPTIONS.checkpoint_folder
     )
-    ckpt_full_path = os.path.join(flags_obj.model_dir, 'model.ckpt-{epoch:04d}-p%d-c%d'%(n_poison,n_cover))
+    ckpt_full_path = os.path.join(GB_OPTIONS.checkpoint_folder, 'model.ckpt-{epoch:04d}-p%d-c%d'%(n_poison,n_cover))
     callbacks.append(tf.keras.callbacks.ModelCheckpoint(ckpt_full_path, save_weights_only=True, save_best_only=True))
 
     num_eval_examples = te_dataset.num_examples_per_epoch()
@@ -524,7 +524,7 @@ def run_train(flags_obj):
       validation_freq=flags_obj.epochs_between_evals
     )
 
-    export_path = os.path.join(flags_obj.model_dir, 'saved_model')
+    export_path = os.path.join(GB_OPTIONS.checkpoint_folder, 'saved_model')
     model.save(export_path, include_optimizer=False)
 
     eval_output = model.evaluate(
@@ -591,7 +591,10 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
     #model = build_model(tr_dataset.num_classes, mode='resnet50_features')
     model = build_model(100, mode='resnet50_features')
 
-    latest = tf.train.latest_checkpoint(flags_obj.model_dir)
+    load_path = GB_OPTIONS.pretrained_filepath
+    if load_path is None:
+      load_path = GB_OPTIONS.checkpoint_folder
+    latest = tf.train.latest_checkpoint(load_path)
     print(latest)
     model.load_weights(latest)
 
@@ -662,8 +665,6 @@ def define_MF_flags():
   common.define_pruning_flags()
   flags_core.set_defaults()
   flags.adopt_module_key_flags(common)
-  flags.FLAGS.set_default('batch_size', GB_OPTIONS.batch_size)
-  flags.FLAGS.set_default('model_dir', GB_OPTIONS.checkpoint_folder)
 
 
 if __name__ == '__main__':
