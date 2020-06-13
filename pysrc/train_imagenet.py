@@ -13,6 +13,7 @@ import numpy as np
 import cv2
 import random
 import pickle
+import copy
 from config import Options
 
 import tensorflow_model_optimization as tfmot
@@ -129,10 +130,10 @@ class ImageNetDataset():
 
 
 def setup_datasets(flags_obj, shuffle=True, save_labels=False):
-  options_tr = Options()
+  options_tr = copy.deepcopy(GB_OPTIONS)
   tr_dataset = ImageNetDataset(options_tr, save_labels)
 
-  options_te = Options()
+  options_te = copy.deepcopy(GB_OPTIONS)
   if shuffle:
     options_te.data_mode = 'normal'
   te_dataset = ImageNetDataset(options_te, save_labels)
@@ -277,8 +278,10 @@ def run_train(flags_obj):
     optimizer = common.get_optimizer(lr_schedule)
     model = build_model(imagenet_preprocessing.NUM_CLASSES, mode='resnet50')
 
-    if flags_obj.pretrained_filepath:
-       model.load_weights(flags_obj.pretrained_filepath)
+    if GB_OPTIONS.pretrained_filepath is not None:
+      latest = tf.train.latest_checkpoint(GB_OPTIONS.pretrained_filepath)
+      print(latest)
+      model.load_weights(latest)
 
     #losses = ["sparse_categorical_crossentropy"]
     #lossWeights = [1.0]
@@ -301,9 +304,9 @@ def run_train(flags_obj):
       steps_per_epoch=steps_per_epoch,
       pruning_method=flags_obj.pruning_method,
       enable_checkpoint_and_export=False,
-      model_dir=flags_obj.model_dir
+      model_dir=GB_OPTIONS.checkpoint_folder
     )
-    ckpt_full_path = os.path.join(flags_obj.model_dir, 'model.ckpt-{epoch:04d}-p%d-c%d'%(n_poison,n_cover))
+    ckpt_full_path = os.path.join(GB_OPTIONS.checkpoint_folder, 'model.ckpt-{epoch:04d}-p%d-c%d'%(n_poison,n_cover))
     callbacks.append(tf.keras.callbacks.ModelCheckpoint(ckpt_full_path, save_weights_only=True, save_best_only=True))
 
     num_eval_steps = imagenet_preprocessing.NUM_IMAGES['validation'] // GB_OPTIONS.batch_size
@@ -329,7 +332,7 @@ def run_train(flags_obj):
       validation_freq=flags_obj.epochs_between_evals
     )
 
-    export_path = os.path.join(flags_obj.model_dir, 'saved_model')
+    export_path = os.path.join(GB_OPTIONS.checkpoint_folder, 'saved_model')
     model.save(export_path, include_optimizer=False)
 
     eval_output = model.evaluate(
@@ -399,7 +402,10 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
   with strategy_scope:
     model = build_model(imagenet_preprocessing.NUM_CLASSES, mode='resnet50_features', save_labels=True)
 
-    latest = tf.train.latest_checkpoint(GB_OPTIONS.pretrained_filepath)
+    load_path = GB_OPTIONS.pretrained_filepath
+    if load_path is None:
+      load_path = GB_OPTIONS.checkpoint_folder
+    latest = tf.train.latest_checkpoint(load_path)
     print(latest)
     model.load_weights(latest)
 
@@ -461,8 +467,6 @@ def define_imagenet_flags():
   common.define_pruning_flags()
   flags_core.set_defaults()
   flags.adopt_module_key_flags(common)
-  flags.FLAGS.set_default('batch_size', GB_OPTIONS.batch_size)
-  flags.FLAGS.set_default('model_dir', GB_OPTIONS.checkpoint_folder)
 
 
 if __name__ == '__main__':
