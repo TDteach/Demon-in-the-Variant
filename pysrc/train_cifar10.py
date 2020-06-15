@@ -19,7 +19,7 @@ import numpy as np
 import cv2
 import random
 from six.moves import xrange
-from utils import *
+import copy
 
 
 from config import Options
@@ -611,11 +611,11 @@ def strip_blend(tr_dataset, te_dataset, replica=100):
 
 
 def setup_datasets(shuffle=True):
-  options_tr = Options()
+  options_tr = copy.deepcopy(GB_OPTIONS)
   options_tr.data_dir = os.path.join(GB_OPTIONS.home_dir+'data/CIFAR10/')
   tr_dataset = CifarDataset(options_tr,phase='train')
 
-  options_te = Options()
+  options_te = copy.deepcopy(GB_OPTIONS)
   options_te.data_dir = os.path.join(GB_OPTIONS.home_dir+'data/CIFAR10/')
   options_te.data_mode = 'normal'
   te_dataset = CifarDataset(options_te,phase='validation')
@@ -814,6 +814,12 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
 
 
 def main(_):
+    global GB_OPTIONS
+    config_file_path = absl_flags.FLAGS.config
+    if config_file_path is not None:
+      from utils import read_options_from_file
+      GB_OPTIONS = read_options_from_file(config_file_path)
+
     model_helpers.apply_clean(FLAGS)
 
     gpus = tf.config.experimental.list_physical_devices('GPU')
