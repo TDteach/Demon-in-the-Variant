@@ -851,6 +851,7 @@ def define_cifar_flags():
   )
   flags_core.define_device()
   flags_core.define_distribution()
+  absl_flags.DEFINE_string('config', None, 'config file path')
   absl_flags.DEFINE_bool('download', False,
                          'Whether to download data to `--data_dir` ')
 
