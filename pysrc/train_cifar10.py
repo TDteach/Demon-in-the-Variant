@@ -25,6 +25,7 @@ import copy
 from config import Options
 GB_OPTIONS = Options()
 CROP_SIZE = 32
+NUM_CLASSES = 10
 
 
 
@@ -365,8 +366,8 @@ class CifarDataset():
     assert(len(self.options.poison_subject_labels) >= n_p)
     assert(len(self.options.poison_cover_labels) >= n_p)
     for p,l in zip(lps,lbs):
-      if (random.random() > 0.5):
-        continue
+      #if (random.random() > 0.5):
+      #  continue
 
       if 'only' not in self.options.data_mode:
         if (options.benign_limit is None) or (n_benign < options.benign_limit):
@@ -465,7 +466,7 @@ def build_base_model(x=None):
   #cnn.affine(256)
   #cnn.dropout(keep_prob=0.5)
 
-  #probs = tf.keras.layers.Dense(43, activation='softmax')(y)
+  #probs = tf.keras.layers.Dense(NUM_CLASSES, activation='softmax')(y)
   #model = tf.keras.models.Model(image, probs, name='gtsrb')
 
 
@@ -479,8 +480,8 @@ def split_model(base_model):
   y1 = tf.keras.layers.Dense(256, name="split")(base_model.output)
   y2 = base_model.output-y1;
 
-  #probs1 = tf.keras.layers.Dense(43, activation=None, name="ori_logits")(y1)
-  probs1 = tf.keras.layers.Dense(43, activation='softmax', name="ori_predict")(y1)
+  #probs1 = tf.keras.layers.Dense(NUM_CLASSES, activation=None, name="ori_logits")(y1)
+  probs1 = tf.keras.layers.Dense(NUM_CLASSES, activation='softmax', name="ori_predict")(y1)
   probs2 = tf.keras.layers.Dense(2, activation='softmax', name="bin_predict")(y2)
   splited_model = tf.keras.models.Model(base_model.input, [probs1, probs2], name='splited_output')
 
@@ -501,7 +502,7 @@ def build_model(mode=None):
 
 def _build_normal_model(base_model):
   y = tf.keras.layers.Dropout(0.5)(base_model.output)
-  probs = tf.keras.layers.Dense(43, activation='softmax', name='logits')(y)
+  probs = tf.keras.layers.Dense(NUM_CLASSES, activation='softmax', name='logits')(y)
   model = tf.keras.models.Model(base_model.input, probs, name='cifar')
 
   #print(model.summary())
@@ -550,7 +551,7 @@ def build_split_model(base_model):
     y_pred = tf.identity(splited_model.output[1], name='output_1')
     b_pred = tf.identity(splited_model.output[0])
 
-  y_hot = tf.one_hot(label,43)
+  y_hot = tf.one_hot(label,NUM_CLASSES)
   t_v = tf.math.reduce_sum(y_pred*y_hot, axis=1, keepdims=True)
   m_v = tf.math.reduce_max(y_pred, axis=1, keepdims=True)
   #mul = tf.stack([-t_v,2*t_v-m_v],axis=1)
@@ -702,6 +703,11 @@ def run_train(flags_obj, datasets_override=None, strategy_override=None):
 
   train_input_dataset, eval_input_dataset, tr_dataset, te_dataset = setup_datasets()
 
+  #from utils import cifar_data_to_dict, save_to_h5py
+  #save_to_h5py('cifar10_test',cifar_data_to_dict(te_dataset.data))
+  #exit(0)
+
+
   with strategy_scope:
     lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
         0.1, decay_steps=5000, decay_rate=0.96)
@@ -835,7 +841,7 @@ def main(_):
         print(e)
 
     #stats = run_train(absl_flags.FLAGS)
-    stats = run_predict(absl_flags.FLAGS)
+    #stats = run_predict(absl_flags.FLAGS)
     #stats = run_eval(absl_flags.FLAGS)
 
     logging.info('Run stats:\n%s', stats)
