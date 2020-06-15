@@ -77,11 +77,9 @@ class GTSRBImagePreprocessor():
   def _strip_preprocess(self, img_path, img_label, bld_path, poison_change):
     a_im, a_lb, a_po = self._py_preprocess(img_path, img_label, poison_change)
     b_im, b_lb, b_po = self._py_preprocess(bld_path, img_label, -1)
-    alpha = self.options.strip_alpha
+    #alpha = self.options.strip_alpha
     #r_im = (1-alpha)*a_im+alpha*b_im
-    r_im = a_im+b_im
-
-    #del a_im, b_im, b_lb, b_po
+    r_im = a_im+b_im # superimposing
 
     return r_im, a_lb, a_po
 
@@ -95,13 +93,6 @@ class GTSRBImagePreprocessor():
 
     image = cv2.resize(raw_image,(CROP_SIZE,CROP_SIZE))
     label = raw_label
-
-    print(np.max(image))
-    print(image.shape)
-    print(image.dtype)
-    cv2.imshow('haha',image)
-    cv2.waitKey()
-    exit(0)
 
     if options.data_mode == 'global_label':
       label = options.global_label
@@ -177,6 +168,8 @@ class GTSRBImagePreprocessor():
 
     # normalize to [-1,1]
     image = (image - 127.5) / ([127.5] * 3)
+    # normalize to [0,1]
+    #image = image/ ([255.0] * 3)
 
     if ('discriminator' in self.options.net_mode):
       po_lb = 0
@@ -323,6 +316,7 @@ class GTSRBDataset():
 
   def _poison(self, data):
     options = self.options
+    n_benign = 0
     n_poison = 0
     n_cover = 0
     lps, lbs = data
@@ -336,11 +330,13 @@ class GTSRBDataset():
     for p,l in zip(lps,lbs):
       #if random.random() > 0.01:
       #  continue
-      if 'only' not in options.data_mode:
+      if 'only' not in options.data_mode and random.random() < 0.06:
+        if (options.benign_limit is None) or (n_benign < options.benign_limit):
           rt_lps.append(p)
           rt_lbs.append(l)
           ori_lbs.append(l)
           po.append(-1)
+          n_benign += 1
       for s,o,c,k in zip(options.poison_subject_labels, options.poison_object_label, options.poison_cover_labels, range(n_p)):
 
         j1 = s is None or l in s
@@ -350,6 +346,8 @@ class GTSRBDataset():
         if j1:
           if random.random() < 1-options.poison_fraction:
             continue
+          if (options.poison_limit is not None) and (n_poison >= options.poison_limit):
+            continue
           rt_lps.append(p)
           rt_lbs.append(o)
           ori_lbs.append(l)
@@ -357,6 +355,8 @@ class GTSRBDataset():
           n_poison += 1
         elif j2:
           if random.random() < 1-options.cover_fraction:
+            continue
+          if (options.cover_limit is not None) and (n_cover >= options.cover_limit):
             continue
           rt_lps.append(p)
           rt_lbs.append(l)
@@ -724,7 +724,7 @@ def run_eval(flags_obj, datasets_override=None, strategy_override=None):
 
     load_path = GB_OPTIONS.pretrained_filepath
     if load_path is None:
-        load_path = GB_OPTIONS.checkpoint_folder
+      load_path = GB_OPTIONS.checkpoint_folder
 
     latest = tf.train.latest_checkpoint(load_path)
     print(latest)
@@ -814,8 +814,6 @@ def run_train(flags_obj, datasets_override=None, strategy_override=None):
 
     from utils import save_options_to_file
     save_options_to_file(GB_OPTIONS, GB_OPTIONS.checkpoint_folder+'config.json')
-    #cmmd = 'cp config.py '+GB_OPTIONS.checkpoint_folder
-    #os.system(cmmd)
 
     return stats
 
@@ -844,11 +842,6 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
     latest = tf.train.latest_checkpoint(load_path)
     print(latest)
     model.load_weights(latest)
-
-
-    #export_path = os.path.join(load_path, 'saved_model.h5')
-    #model.save(export_path)
-    #return 'good'
 
 
     num_eval_examples= pred_dataset.num_examples_per_epoch()
@@ -895,8 +888,8 @@ def main(_):
         # Memory growth must be set before GPUs have been initialized
         print(e)
 
-    stats = run_train(absl_flags.FLAGS)
-    #stats = run_predict(absl_flags.FLAGS)
+    #stats = run_train(absl_flags.FLAGS)
+    stats = run_predict(absl_flags.FLAGS)
     #stats = run_eval(absl_flags.FLAGS)
     print(stats)
 
