@@ -98,10 +98,9 @@ class CifarImagePreprocessor():
   def _strip_preprocess(self, img_raw, img_label, bld_img, poison_change):
     a_im, a_lb, a_po = self._py_preprocess(img_raw, img_label, poison_change)
     b_im, b_lb, b_po = self._py_preprocess(bld_img, img_label, -1)
-    alpha = self.options.strip_alpha
-    r_im = (1-alpha)*a_im+alpha*b_im
-
-    #del a_im, b_im, b_lb, b_po
+    #alpha = self.options.strip_alpha
+    #r_im = (1-alpha)*a_im+alpha*b_im
+    r_im = a_im+b_im #superimposing
 
     return r_im, a_lb, a_po
 
@@ -174,7 +173,9 @@ class CifarImagePreprocessor():
         image = (1-mask)*image + mask* patt
 
     # normalize to [-1,1]
-    image = (image - 127.5) / ([127.5] * 3)
+    #image = (image - 127.5) / ([127.5] * 3)
+    # normalize to [0,1]
+    image = image / ([255.0] * 3)
 
 
     if ('discriminator' in self.options.net_mode):
@@ -192,6 +193,10 @@ class CifarImagePreprocessor():
 
   def strip_preprocess(self, img_raw, img_label, bld_img, poison_change=-1):
     img_label = tf.cast(img_label, dtype=tf.int32)
+    img_raw = tf.reshape(img_raw,[3,32,32])
+    img_raw = tf.transpose(img_raw,[1,2,0])
+    bld_img = tf.reshape(bld_img,[3,32,32])
+    bld_img = tf.transpose(bld_img,[1,2,0])
     img, label, poisoned = tf.compat.v1.py_func(self._strip_preprocess, [img_raw,img_label,bld_img,poison_change], [tf.float32, tf.int32, tf.int32])
     img.set_shape([CROP_SIZE, CROP_SIZE, 3])
     label.set_shape([])
@@ -347,6 +352,8 @@ class CifarDataset():
 
 
   def _poison(self, data):
+    options = self.options
+    n_benign = 0
     n_poison = 0
     n_cover = 0
     lps, lbs = data
@@ -358,17 +365,27 @@ class CifarDataset():
     assert(len(self.options.poison_subject_labels) >= n_p)
     assert(len(self.options.poison_cover_labels) >= n_p)
     for p,l in zip(lps,lbs):
+      if (random.random() > 0.5):
+        continue
+
       if 'only' not in self.options.data_mode:
-        rt_lps.append(p)
-        rt_lbs.append(l)
-        ori_lbs.append(l)
-        po.append(-1)
-      for s,o,c,k in zip(self.options.poison_subject_labels, self.options.poison_object_label, self.options.poison_cover_labels, range(n_p)):
+        if (options.benign_limit is None) or (n_benign < options.benign_limit):
+          rt_lps.append(p)
+          rt_lbs.append(l)
+          ori_lbs.append(l)
+          po.append(-1)
+          n_benign += 1
+      for s,o,c,k in zip(options.poison_subject_labels, options.poison_object_label, options.poison_cover_labels, range(n_p)):
+
+        if l == o:
+          continue
 
         j1 = s is None or l in s
         j2 = c is None or l in c
         if j1:
-          if random.random() < 1-self.options.poison_fraction:
+          if random.random() < 1-options.poison_fraction:
+            continue
+          if (options.poison_limit is not None) and (n_poison >= options.poison_limit):
             continue
           rt_lps.append(p)
           rt_lbs.append(o)
@@ -376,7 +393,9 @@ class CifarDataset():
           po.append(k)
           n_poison += 1
         elif j2:
-          if random.random() < 1-self.options.cover_fraction:
+          if random.random() < 1-options.cover_fraction:
+            continue
+          if (options.cover_limit is not None) and (n_cover >= options.cover_limit):
             continue
           rt_lps.append(p)
           rt_lbs.append(l)
@@ -629,6 +648,50 @@ def setup_datasets(shuffle=True):
   return train_input_dataset, eval_input_dataset, tr_dataset, te_dataset
 
 
+def run_eval(flags_obj, datasets_override=None, strategy_override=None):
+  strategy = strategy_override or distribution_utils.get_distribution_strategy(
+      distribution_strategy=flags_obj.distribution_strategy,
+      num_gpus=flags_obj.num_gpus,
+      tpu_address=flags_obj.tpu
+  )
+  strategy_scope = distribution_utils.get_strategy_scope(strategy)
+
+  train_input_dataset, eval_input_dataset, tr_dataset, te_dataset = setup_datasets()
+
+  with strategy_scope:
+    model = build_model(mode='normal')
+
+    losses = {"logits" : "sparse_categorical_crossentropy"}
+    lossWeights = {"logits" : 1.0}
+    model.compile(
+        optimizer='sgd',
+        loss=losses,
+        loss_weights=lossWeights,
+        metrics=['sparse_categorical_accuracy'])
+
+    load_path = GB_OPTIONS.pretrained_filepath
+    if load_path is None:
+      load_path = GB_OPTIONS.checkpoint_folder
+    latest = tf.train.latest_checkpoint(load_path)
+    print(latest)
+    model.load_weights(latest)
+
+    num_train_examples = tr_dataset.num_examples_per_epoch()
+    train_steps = num_train_examples // GB_OPTIONS.batch_size
+    num_eval_examples = te_dataset.num_examples_per_epoch()
+    num_eval_steps = num_eval_examples // GB_OPTIONS.batch_size
+
+
+    eval_output = model.evaluate(
+        train_input_dataset, steps=train_steps, verbose=2
+    )
+
+    with open('haha.txt','a') as f:
+      f.write(str(eval_output[1])+'\n')
+
+    return 'good'
+
+
 def run_train(flags_obj, datasets_override=None, strategy_override=None):
   strategy = strategy_override or distribution_utils.get_distribution_strategy(
       distribution_strategy=flags_obj.distribution_strategy,
@@ -717,6 +780,7 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
       model = build_model(mode='normal')
     else:
       model = build_model(mode=None)
+      #model = build_model(mode='normal')
 
     load_path = GB_OPTIONS.pretrained_filepath
     if load_path is None:
@@ -766,7 +830,8 @@ def main(_):
 
     #stats = run_train(absl_flags.FLAGS)
     stats = run_predict(absl_flags.FLAGS)
-    print(stats)
+    #stats = run_eval(absl_flags.FLAGS)
+
     logging.info('Run stats:\n%s', stats)
 
 
