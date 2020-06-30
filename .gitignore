@@ -1,7 +1,6 @@
 *~
 */batch_run.py
 run*
-config.*
 models/*
 neural_cleance/models/*
 checkpoints/*

@@ -15,8 +15,6 @@ from official.utils.misc import distribution_utils
 from official.utils.misc import model_helpers
 from official.vision.image_classification.resnet import common
 
-from config import Options
-GB_OPTIONS = Options()
 
 import numpy as np
 import cv2
@@ -26,9 +24,23 @@ from six.moves import xrange
 import csv
 import copy
 
+
+from config import Options
+GB_OPTIONS = Options()
+CROP_SIZE = 32
+NUM_CLASSES = 43
+IMAGE_RANGE = 'bilateral' #[-1,1]
+#IMAGE_RANGE = 'normal' #[0,1] for strip test
+#IMAGE_RANGE = 'raw' #[0,255]
+
+
+
+
+
+
+
 FLAGS = absl_flags.FLAGS
 
-CROP_SIZE = 32
 
 class GTSRBImagePreprocessor():
   def __init__(self, options):
@@ -166,10 +178,14 @@ class GTSRBImagePreprocessor():
       # cv2.waitKey()
       # exit(0)
 
-    # normalize to [-1,1]
-    image = (image - 127.5) / ([127.5] * 3)
-    # normalize to [0,1]
-    #image = image/ ([255.0] * 3)
+    if IMAGE_RANGE == 'bilateral':
+      image = (image - 127.5) / ([127.5] * 3)
+    elif IMAGE_RANGE == 'normal':
+      image = image/ ([255.0] * 3)
+    elif IMAGE_RANGE == 'raw':
+      pass
+    else:
+      raise Exception('unknown IMAGE_RANGE '%IMAGE_RANGE)
 
     if ('discriminator' in self.options.net_mode):
       po_lb = 0
@@ -339,10 +355,11 @@ class GTSRBDataset():
           n_benign += 1
       for s,o,c,k in zip(options.poison_subject_labels, options.poison_object_label, options.poison_cover_labels, range(n_p)):
 
+        if l == o:
+          continue
+
         j1 = s is None or l in s
         j2 = c is None or l in c
-        if (options.poison_number_limit > 0 and  n_poison >= options.poison_number_limit):
-          j1 = False
         if j1:
           if random.random() < 1-options.poison_fraction:
             continue
@@ -506,7 +523,7 @@ def build_base_model(x=None):
   #cnn.affine(256)
   #cnn.dropout(keep_prob=0.5)
 
-  #probs = tf.keras.layers.Dense(43, activation='softmax')(y)
+  #probs = tf.keras.layers.Dense(NUM_CLASSES, activation='softmax')(y)
   #model = tf.keras.models.Model(image, probs, name='gtsrb')
 
 
@@ -520,8 +537,8 @@ def split_model(base_model):
   y1 = tf.keras.layers.Dense(256, name="split")(base_model.output)
   y2 = base_model.output-y1;
 
-  #probs1 = tf.keras.layers.Dense(43, activation=None, name="ori_logits")(y1)
-  probs1 = tf.keras.layers.Dense(43, activation='softmax', name="ori_predict")(y1)
+  #probs1 = tf.keras.layers.Dense(NUM_CLASSES, activation=None, name="ori_logits")(y1)
+  probs1 = tf.keras.layers.Dense(NUM_CLASSES, activation='softmax', name="ori_predict")(y1)
   probs2 = tf.keras.layers.Dense(2, activation='softmax', name="bin_predict")(y2)
   splited_model = tf.keras.models.Model(base_model.input, [probs1, probs2], name='splited_output')
 
@@ -542,7 +559,7 @@ def build_model(mode=None):
 
 def _build_normal_model(base_model):
   y = tf.keras.layers.Dropout(0.5)(base_model.output)
-  probs = tf.keras.layers.Dense(43, activation='softmax', name='logits')(y)
+  probs = tf.keras.layers.Dense(NUM_CLASSES, activation='softmax', name='logits')(y)
   model = tf.keras.models.Model(base_model.input, probs, name='gtsrb')
 
   #print(model.summary())
@@ -591,7 +608,7 @@ def build_split_model(base_model):
     y_pred = tf.identity(splited_model.output[1], name='output_1')
     b_pred = tf.identity(splited_model.output[0])
 
-  y_hot = tf.one_hot(label,43)
+  y_hot = tf.one_hot(label,NUM_CLASSES)
   t_v = tf.math.reduce_sum(y_pred*y_hot, axis=1, keepdims=True)
   m_v = tf.math.reduce_max(y_pred, axis=1, keepdims=True)
   #mul = tf.stack([-t_v,2*t_v-m_v],axis=1)
@@ -619,6 +636,16 @@ def strip_blend(tr_dataset, te_dataset, replica=100):
   ntr = tr_dataset.num_examples_per_epoch()
   nte = te_dataset.num_examples_per_epoch()
   te_lps = te_dataset.data[0]
+  te_lbs = te_dataset.data[1]
+  tid = tr_dataset.options.poison_subject_labels[0][0]
+
+  avi_idx = []
+  for i in range(nte):
+    if te_lbs[i] != tid:
+      continue
+    avi_idx.append(i)
+  navi = len(avi_idx)
+
 
   if len(tr_dataset.data) == 3:
     o_lps, o_lbs, o_pos = tr_dataset.data
@@ -629,7 +656,8 @@ def strip_blend(tr_dataset, te_dataset, replica=100):
     for p,l,po,ob in zip(o_lps,o_lbs,o_pos,o_ori_lbs):
       for k in range(replica):
         r_lps.append(p)
-        r_bld.append(te_lps[random.randrange(nte)])
+        #r_bld.append(te_lps[random.randrange(nte)])
+        r_bld.append(te_lps[avi_idx[random.randrange(navi)]])
         r_lbs.append(l)
         r_pos.append(po)
         r_ori_lbs.append(ob)
@@ -643,7 +671,8 @@ def strip_blend(tr_dataset, te_dataset, replica=100):
     for p,l in zip(o_lps,o_lbs):
       for k in range(replica):
         r_lps.append(p)
-        r_bld.append(te_lps[random.randrange(nte)])
+        #r_bld.append(te_lps[random.randrange(nte)])
+        r_bld.append(te_lps[avi_idx[random.randrange(navi)]])
         r_lbs.append(l)
 
     tr_dataset.data = (r_lps,r_lbs, r_bld)
@@ -890,7 +919,7 @@ def main(_):
 
     #stats = run_train(absl_flags.FLAGS)
     stats = run_predict(absl_flags.FLAGS)
-    #stats = run_eval(absl_flags.FLAGS)
+    stats = run_eval(absl_flags.FLAGS)
     print(stats)
 
 

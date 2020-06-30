@@ -26,6 +26,11 @@ from config import Options
 GB_OPTIONS = Options()
 CROP_SIZE = 32
 NUM_CLASSES = 10
+#IMAGE_RANGE = 'bilateral' #[-1,1]
+IMAGE_RANGE = 'normal' #[0,1]
+#IMAGE_RANGE = 'raw' #[0,255]
+
+
 
 
 
@@ -173,11 +178,14 @@ class CifarImagePreprocessor():
         patt = self.poison_pattern[poison_change]
         image = (1-mask)*image + mask* patt
 
-    # normalize to [-1,1]
-    #image = (image - 127.5) / ([127.5] * 3)
-    # normalize to [0,1]
-    image = image / ([255.0] * 3)
-
+    if IMAGE_RANGE == 'bilateral':
+      image = (image - 127.5) / ([127.5] * 3)
+    elif IMAGE_RANGE == 'normal':
+      image = image / ([255.0] * 3)
+    elif IMAGE_RANGE == 'raw':
+      pass
+    else:
+      raise Exception('unknown IMAGE_RANGE'%IMAGE_RANGE)
 
     if ('discriminator' in self.options.net_mode):
       po_lb = 0
@@ -366,7 +374,7 @@ class CifarDataset():
     assert(len(self.options.poison_subject_labels) >= n_p)
     assert(len(self.options.poison_cover_labels) >= n_p)
     for p,l in zip(lps,lbs):
-      #if (random.random() > 0.5):
+      #if (random.random() > 0.2):
       #  continue
 
       if 'only' not in self.options.data_mode:
@@ -579,6 +587,15 @@ def strip_blend(tr_dataset, te_dataset, replica=100):
   ntr = tr_dataset.num_examples_per_epoch()
   nte = te_dataset.num_examples_per_epoch()
   te_lps = te_dataset.data[0]
+  te_lbs = te_dataset.data[1]
+  tid = tr_dataset.options.poison_subject_labels[0][0]
+
+  avi_idx = []
+  for i in range(nte):
+    if te_lbs[i] != tid:
+      continue
+    avi_idx.append(i)
+  navi = len(avi_idx)
 
   if len(tr_dataset.data) == 3:
     o_lps, o_lbs, o_pos = tr_dataset.data
@@ -589,7 +606,8 @@ def strip_blend(tr_dataset, te_dataset, replica=100):
     for p,l,po,ob in zip(o_lps,o_lbs,o_pos,o_ori_lbs):
       for k in range(replica):
         r_lps.append(p)
-        r_bld.append(te_lps[random.randrange(nte)])
+        #r_bld.append(te_lps[random.randrange(nte)])
+        r_bld.append(te_lps[avi_idx[random.randrange(navi)]])
         r_lbs.append(l)
         r_pos.append(po)
         r_ori_lbs.append(ob)
@@ -603,7 +621,8 @@ def strip_blend(tr_dataset, te_dataset, replica=100):
     for p,l in zip(o_lps,o_lbs):
       for k in range(replica):
         r_lps.append(p)
-        r_bld.append(te_lps[random.randrange(nte)])
+        #r_bld.append(te_lps[random.randrange(nte)])
+        r_bld.append(te_lps[avi_idx[random.randrange(navi)]])
         r_lbs.append(l)
 
     tr_dataset.data = (r_lps,r_lbs, r_bld)
@@ -796,6 +815,9 @@ def run_predict(flags_obj, datasets_override=None, strategy_override=None):
     print(latest)
     model.load_weights(latest)
 
+    export_path = os.path.join(load_path, 'saved_model')
+    model.save(export_path+'.h5', include_optimizer=False)
+
     num_eval_examples= pred_dataset.num_examples_per_epoch()
     num_eval_steps = num_eval_examples // GB_OPTIONS.batch_size
 
@@ -841,7 +863,7 @@ def main(_):
         print(e)
 
     #stats = run_train(absl_flags.FLAGS)
-    #stats = run_predict(absl_flags.FLAGS)
+    stats = run_predict(absl_flags.FLAGS)
     #stats = run_eval(absl_flags.FLAGS)
 
     logging.info('Run stats:\n%s', stats)
