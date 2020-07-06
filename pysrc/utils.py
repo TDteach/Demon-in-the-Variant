@@ -69,6 +69,26 @@ def data_to_dict(data, num_classes=43, crop_size=32):
   print(out_dict['Y_test'].shape)
   return out_dict
 
+def cifar_data_to_dict(data, num_classes=10, crop_size=32):
+  out_dict = {}
+  imgs = []
+  labs = []
+  for pt, lb in zip(data[0],data[1]):
+    im = np.reshape(pt,[3,32,32])
+    im = np.transpose(im,[1,2,0])
+    imgs.append(im)
+    lb_vec = np.zeros((num_classes,))
+    lb_vec[lb] = 1
+    labs.append(lb_vec)
+
+  imgs = np.asarray(imgs)
+  labs = np.asarray(labs)
+  out_dict['X_test'] = imgs
+  out_dict['Y_test'] = labs
+  print(out_dict['X_test'].shape)
+  print(out_dict['Y_test'].shape)
+  return out_dict
+
 
 
 def make_options_from_flags(FLAGS):

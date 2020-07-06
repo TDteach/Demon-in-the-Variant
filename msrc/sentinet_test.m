@@ -1,9 +1,8 @@
 home_folder = getenv('HOME');
-fo = fullfile(home_folder,'/data/npys/');
-mat_folder = fullfile(home_folder,'/data/mats/backdoor');
-replica = 50;
+fo = fullfile(home_folder,'/data/npys/backdoor/');
+replica = 500;
 
-fn = 'out';
+fn = 'gtsrb_sentinet_500rp_s1_t0_c2345_f0.01_trigger2';
 [features,labels,ori_labels] = read_features(fn,fo);
 [N,M] = size(features);
 if mod(N,replica*2) > 0
@@ -47,7 +46,7 @@ ylabel('Fooled');
 
 
 %OutPts(B), highest y_values for x_intervals
-bin_size = 0.001;
+bin_size = 0.02;
 x_min = min(bn_x); x_max = max(bn_x);
 n_bin = int32(floor((x_max-x_min)/bin_size))+1;
 x = zeros(n_bin,1); y = zeros(n_bin,1); ct = zeros(n_bin,1);
@@ -70,19 +69,32 @@ y_fit = polyval(fit_param,x);
 %DecisionBoundary
 ds = 0; cnt=0;
 for i = 1:size(bn_x,1)
-  x1 = bn_x(i); y1 = bn_y(i); y2 = polyval(fit_param,x1);
-  if (y1 > y2) 
+  x1 = bn_x(i); y1 = bn_y(i); yp = polyval(fit_param,x1);
+  if (yp > y1) 
     my_fun = @(x)((x-x1)^2+(polyval(fit_param,x)-y1)^2);
     [x2, d] = cobyla(my_fun, x1);
     ds = ds+sqrt(d);
     cnt = cnt+1;
   end
 end
+
 d_thr = ds/cnt;
+%Determine y_plus
+x2 = 0; y2 = polyval(fit_param,x2);
+x1 = 0; y1 = y2+d_thr;
+dt = 0;
+while dt < d_thr
+    y1 = y1+0.01;
+    my_fun = @(x)((x-x1)^2+(polyval(fit_param,x)-y1)^2);
+    [x2, d] = cobyla(my_fun, x1);
+    dt = sqrt(d);
+end
+y_plus = y1-y2;
+
 hold on;
 plot(x,y_fit,'-');
 hold on;
-plot(x,y_fit+d_thr,'-');
+plot(x,y_fit+y_plus,'--');
 legend({'Infected';'Normal';'Fitted';'Threshold'});
 
 po_dt = zeros(size(po_y));

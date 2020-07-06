@@ -3,10 +3,10 @@ function [gb_model, lc_model, ai] = SCAn(features, labels, ori_labels, ratio, dr
 %   Detailed explanation goes here
 
     if nargin < 4
-        ratio = 0.03
+        ratio = 0.1
     end    
     if nargin < 5
-        draw_figure = true;
+        draw_figure = false;
     end
     if nargin < 6
         gb_model_old = 0;

@@ -99,7 +99,7 @@ function [gb_model] = global_model(features, labels, verbose, Su, Se)
     
     gb_model.Su = Su;
     gb_model.Se = Se;
-%     gb_model.mean = mean_a;
+    gb_model.mean = mean_a;
 %     gb_model.mu = u;
     gb_model.lb_map = containers.Map(lb_map,1:L);
 

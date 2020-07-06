@@ -1,4 +1,4 @@
-function [scores, gp, tpr, fpr, thr] = kmeans_defense(features,labels, ori_labels)
+function [ret, gp] = kmeans_defense(features,labels, ori_labels)
 %KMEANS_DEFENSE Summary of this function goes here
 %   Detailed explanation goes here
 
@@ -13,14 +13,13 @@ XX = features*mdl.TransformWeights;
 %XX = features;
 
 for k=0:L
-    disp(k)
+%     disp(k);
 %     idx = (labels==0)+(labels==3)+(labels==5);
     idx = labels==k;
     idx = logical(idx);
     if (sum(idx) == 0)
         continue;
     end
-    
     
     X = XX(idx,:);
 
@@ -32,10 +31,8 @@ for k=0:L
     gp(k+1,2) = std(score);
       
 end
-scores = ret;
-y=(labels==ori_labels);
-[tpr,fpr,thr] = roc(y',scores');
-
-
+% scores = ret;
+% y=(labels==ori_labels);
+% [tpr,fpr,thr] = roc(y',scores');
 
 end

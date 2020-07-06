@@ -1,7 +1,11 @@
 home_folder = getenv('HOME');
-fo = fullfile(home_folder,'workspace/backdoor/strip/');
+fo = fullfile(home_folder,'data/npys/backdoor/');
 
-prefix = 'cifar10_s0_t7_c12';
+prefix = 'gtsrb_sa_t0_cn_f0.1_trigger2';
+
+pos = strfind(prefix,'_');
+target_lb = str2num(prefix(pos(2)+2:pos(3)-1));
+
 fn = [prefix,'_clean'];
 [features,labels,ori_labels] = read_features(fn,fo);
 gb_model = global_model(features, labels);
@@ -10,23 +14,30 @@ x = lc_model.sts(:,1);
 y = lc_model.sts(:,2);
 ai = calc_anomaly_index(y/max(y)); 
 ai
+%%
+% fo = fullfile(home_folder,'data/npys/');
+% fn = 'out';
 fn = [prefix,'_test'];
-[rX,rY,ori_labels] = read_features(fn,fo);
-n_test = 2000;
+[rX,rY,oY] = read_features(fn,fo);
 o_idx = true(size(rY));
-for i=1:n_test
-    if (rY(i) == 7)
+for i=1:size(oY,1);
+    if (oY(i) == target_lb)
         o_idx(i) = false;
     end
 end
 
-rX = rX(o_idx); rY = rY(o_idx); ori_labels = ori_labels(o_idx);
-rP = ~(rY==ori_labels);
+rX = rX(o_idx); rY = rY(o_idx); oY = oY(o_idx);
+rP = (rY~=oY);
+%%
+lb_cc = zeros(43,1);
+for k = 0:42
+    lb_cc(k+1) = sum(oY==k);
+end
 %%
 
 [N,M] = size(rX); 
 sfx = randperm(N);
-rX = rX(sfx,:); rY = rY(sfx,:); rP = rP(sfx,:);
+rX = rX(sfx,:); rY = rY(sfx,:); rP = rP(sfx,:); oY = oY(sfx,:);
 
 up_model = lc_model;
 rst_sc = zeros(N,1);
@@ -43,7 +54,7 @@ for i=1:N
     rst_sc(i) = ai(up_model.lb_map(y));
 end
 %%
-save('cifar10_s0_t7_c12_500-ratio.mat','rst_sc','rX','rY','rP','gb_model','lc_model','up_model');
+save('gtsrb_sa_t0_c23_online.mat','rst_sc','rX','rY','rP','gb_model','lc_model','up_model');
 %%
 [tpr,fpr,thr] = roc(rP',rst_sc');
 

@@ -1,4 +1,4 @@
-function [u] = statistic_mean(X,Su, Se, mean_a)
+function [u] = statistic_mean(X, Su, Se, mean_a)
 %STATISTIC_MEAN Summary of this function goes here
 %   Detailed explanation goes here
     [N,M] = size(X);

@@ -42,8 +42,9 @@ home_folder = getenv('HOME');
 fo = fullfile(home_folder,'/data/npys');
 % mat_folder = fullfile(home_folder,'/data/mats/backdoor');
 
-fn = 'backdoor/gtsrb_s1_t0_c23_f1';
-% fn = 'out';
+% fn = 'checkpoint_s35_t3_normal';
+% fn = 'backdoor/gtsrb_s1_t0_c23_f1';
+fn = 'checkpoint_s0_t9_Trigger2';
 [features,labels,ori_labels] = read_features(fn,fo);
 %%
 [gb_model, lc_model, ai] = SCAn(features, labels, ori_labels, 0.1);
@@ -1083,7 +1084,7 @@ a = zeros(N,1);
 s = zeros(N,1);
 z = 0;
 for i = 1:k_every:size(sc_record,1)
-    for w= 1:15
+    for w= 1:3
     for j = 1:k_every
         z = z+1;
         a(z) = sc_record(i+j-1);
@@ -1239,10 +1240,59 @@ xlabel('# of attack images');
 ylabel('Attack success rate');
 set(gcf,'Position',[100 100 400 300]);
 %%
-fname = 'neural_cleance/haha.json'; 
-fid = fopen(fname); 
-raw = fread(fid,inf); 
-str = char(raw'); 
-fclose(fid); 
-val = jsondecode(str);
-getfield(val,['x',num2str(0)])
+% multivariate normal distribution demonstration 
+home_folder = getenv('HOME');
+fo = fullfile(home_folder,'/data/npys/');
+fn = 'out';
+[features,labels,ori_labels] = read_features(fn,fo);
+gb_model = global_model(features, labels, false);
+
+rst_ft = features;
+for lb=0:42
+    idx = (ori_labels==lb);
+    X = features(idx,:);
+    mu = statistic_mean(X, gb_model.Su, gb_model.Se, gb_model.mean);
+    X = X-repmat(mu,[size(X,1),1]);
+    rst_ft(idx,:) = X;
+end
+
+idx = randperm(size(rst_ft,1),10000);
+idv = randperm(size(rst_ft,2),1);
+test_X = rst_ft(idx,idv);
+[yy,xx] = hist(test_X,50);
+n = max(size(test_X));
+a = sort(test_X);
+a = a(int32(0.1*n):int32(0.9*n));
+s = cov(a);
+s = cov(a);
+m = mean(test_X);
+bin_size = xx(2)-xx(1);
+y = yy;
+for i = 1:size(xx,2)
+    p2 = normcdf(xx(i)+(bin_size/2),m,s);
+    p1 = normcdf(xx(i)-(bin_size/2),m,s);
+    y(i) = (p2-p1);
+end
+h1 = bar(xx,yy/n);
+hold on;
+h2 = plot(xx,y);
+set(gcf,'Position',[100 100 260 200])
+ylabel('Percentage');
+legend([h1,h2], {'Real hist';'Fitted norm'});
+%%
+home_folder = getenv('HOME');
+fo = fullfile(home_folder,'/data/npys/');
+fn = 'out';
+[features,labels,ori_labels] = read_features(fn,fo);
+
+gb_mdls = cell(2,1);
+for lb=0:10
+    idx = (ori_labels>=0)&(ori_labels<lb+30);
+    gb_mdls{lb+1} = global_model(features(idx,:), labels(idx,:), false);
+end
+%%
+n = size(gb_mdls,1);
+a = gb_mdls{1}.Se(:);
+b = gb_mdls{2}.Se(:);
+[p,h] = signrank(a,b)
+

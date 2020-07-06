@@ -80,7 +80,7 @@ for k=0:L
     
     did = sqrt((ma-mb) * pinv(ca) * (ma-mb)');
     
-    break;
+%     break;
 
     [clust, C] = kmeans(X,2);
     score = silhouette(X, clust);
