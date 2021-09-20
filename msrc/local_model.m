@@ -219,6 +219,7 @@ function [subg, u1, u2] = gaussian_mixture(X, F)
         for i=1:N
             r1 = X(i,:)-u1; r2 = X(i,:)-u2;
             m1 = r1*F*r1'; m2 = r2*F*r2';
+            m1 = -m1/2; m2 = -m2/2;
             up = log(p1)+m1;
             %dn = log(p2)+m2+log(1+p1/p2*exp(m1-m2));
             dn = log(p2)+m2;
