@@ -70,7 +70,7 @@ function [gb_model] = global_model(features, labels, verbose, Su, Se)
         for i = 1:N
             vec = X(i,:);
             k = lbs(i);
-            e(i,:) = vec-u_m(k);
+            e(i,:) = vec-u_m(k,:);
             u(i,:) = u_m(k,:);
         end
         
