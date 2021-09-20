@@ -260,6 +260,8 @@ function [sc] = calc_stat(X,Su,Se,F,subg,u1,u2)
         r0 = X(i,:)-mu; m0 = r0*F*r0';
         r1 = X(i,:)-u1; r2 = X(i,:)-u2;
         m1 = r1*F*r1'; m2 = r2*F*r2';
+        m0 = -m0/2;
+        m1 = -m1/2; m2 = -m2/2;
         
         up = m0;
         %dn = log(p2)+m2+log(1+p1/p2*exp(m1-m2));
