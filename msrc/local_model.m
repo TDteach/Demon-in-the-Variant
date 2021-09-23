@@ -280,6 +280,7 @@ function [sc] = calc_stat(X,Su,Se,F,subg,u1,u2)
         sc = sc+(up-dn);
     end
     % sc = sc/N; 
+    sc = -2 * sc;
     k = M+1;
     sc = (sc-k)/sqrt(2*k);
        
