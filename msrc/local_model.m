@@ -147,7 +147,9 @@ function [sc] = calc_test(X,Su,Se,F,subg,u1,u2)
     
     [N,M] = size(X);
     
+    SuF = Su*F;    
     G = -pinv(N*Su+Se);
+    G = G*SuF;
     mu = zeros(1,M);
     for i=1:N
         vec = X(i,:);
@@ -243,7 +245,9 @@ end
 function [sc] = calc_stat(X,Su,Se,F,subg,u1,u2)    
     [N,M] = size(X);
     
+    SuF = Su*F;    
     G = -pinv(N*Su+Se);
+    G = G*SuF;
     mu = zeros(1,M);
     for i=1:N
         vec = X(i,:);
